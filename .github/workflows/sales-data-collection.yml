@@ -49,4 +49,6 @@ jobs:
         path: |
           *.log
           *.csv
-        retention-days: 7 
+          treez-*.csv
+        retention-days: 7
+        if-no-files-found: warn 
