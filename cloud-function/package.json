@@ -1,0 +1,12 @@
+{
+  "name": "sales-data-collection-function",
+  "version": "1.0.0",
+  "main": "main.js",
+  "engines": {
+    "node": "18"
+  },
+  "dependencies": {
+    "playwright": "^1.43.1",
+    "googleapis": "^133.0.0"
+  }
+} 

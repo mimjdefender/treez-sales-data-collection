@@ -1,0 +1,13 @@
+{
+  "name": "treez-cloudrun",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "playwright": "^1.43.1",
+    "googleapis": "^133.0.0",
+    "dotenv": "^16.3.1"
+  }
+}

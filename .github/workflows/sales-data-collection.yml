@@ -1,0 +1,52 @@
+name: Sales Data Collection
+
+on:
+  schedule:
+    # 4:20 PM EST (9:20 PM UTC during standard time, 8:20 PM UTC during daylight saving)
+    - cron: '20 21 * * *'  # 9:20 PM UTC (4:20 PM EST during standard time)
+    # 9:15 PM EST (2:15 AM UTC next day during standard time, 1:15 AM UTC during daylight saving)
+    - cron: '15 2 * * *'   # 2:15 AM UTC (9:15 PM EST previous day during standard time)
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  collect-sales-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Create credentials directory
+      run: mkdir -p creds
+      
+    - name: Setup Google Cloud credentials
+      run: |
+        echo '${{ secrets.GOOGLE_CREDENTIALS }}' > creds/credentials.json
+        echo "TREEZ_EMAIL=${{ secrets.TREEZ_EMAIL }}" >> .env
+        echo "TREEZ_PASSWORD=${{ secrets.TREEZ_PASSWORD }}" >> .env
+        echo "GOOGLE_FOLDER_NAME=${{ secrets.GOOGLE_FOLDER_NAME }}" >> .env
+        
+    - name: Install Playwright browsers
+      run: npx playwright install chromium
+      
+    - name: Run sales data collection
+      run: npm start
+      
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: error-logs
+        path: |
+          *.log
+          *.csv
+        retention-days: 7 
