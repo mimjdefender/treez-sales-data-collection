@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
-const fetch = require('node-fetch');
+const https = require('https');
 require('dotenv').config();
 
 // Google Chat Webhook URL
@@ -123,11 +123,11 @@ class SalesReporter {
           },
           {
             widgets: [{
-              keyValue: {
-                topLabel: "💰 Total Sales",
-                content: `$${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                icon: "MONEY"
-              }
+                             keyValue: {
+                 topLabel: "💰 Total Sales",
+                 content: `$${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                 icon: "DOLLAR"
+               }
             }]
           },
           {
@@ -228,21 +228,20 @@ class SalesReporter {
           },
           {
             widgets: [{
-              keyValue: {
-                topLabel: "🔥 Streak",
-                content: `${streakData.streakDays} day${streakData.streakDays > 1 ? 's' : ''}`,
-                bottomLabel: `${topStore.store} on top`,
-                icon: "FLAME"
-              }
+                             keyValue: {
+                 topLabel: "🔥 Streak",
+                 content: `${streakData.streakDays} day${streakData.streakDays > 1 ? 's' : ''}`,
+                 bottomLabel: `${topStore.store} on top`
+               }
             }]
           },
           {
             widgets: [{
-              keyValue: {
-                topLabel: "💰 Total Daily Sales",
-                content: `$${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                icon: "MONEY"
-              }
+                             keyValue: {
+                 topLabel: "💰 Total Daily Sales",
+                 content: `$${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                 icon: "DOLLAR"
+               }
             }]
           },
           {
@@ -301,26 +300,50 @@ class SalesReporter {
 
   // Send Google Chat message
   async sendGoogleChatMessage(message) {
-    try {
-      const response = await fetch(GOOGLE_CHAT_WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(message)
-      });
+    return new Promise((resolve) => {
+      try {
+        const url = new URL(GOOGLE_CHAT_WEBHOOK_URL);
+        const postData = JSON.stringify(message);
+        
+        const options = {
+          hostname: url.hostname,
+          port: url.port || 443,
+          path: url.pathname + url.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
 
-      if (response.ok) {
-        console.log('✅ Google Chat message sent successfully');
-        return true;
-      } else {
-        console.error('❌ Failed to send Google Chat message:', response.statusText);
-        return false;
+        const req = https.request(options, (res) => {
+          let data = '';
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+          res.on('end', () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              console.log('✅ Google Chat message sent successfully');
+              resolve(true);
+            } else {
+              console.error('❌ Failed to send Google Chat message:', res.statusCode, data);
+              resolve(false);
+            }
+          });
+        });
+
+        req.on('error', (error) => {
+          console.error('❌ Error sending Google Chat message:', error.message);
+          resolve(false);
+        });
+
+        req.write(postData);
+        req.end();
+      } catch (error) {
+        console.error('❌ Error sending Google Chat message:', error.message);
+        resolve(false);
       }
-    } catch (error) {
-      console.error('❌ Error sending Google Chat message:', error.message);
-      return false;
-    }
+    });
   }
 
   // Generate email HTML
