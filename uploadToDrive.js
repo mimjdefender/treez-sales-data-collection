@@ -92,13 +92,62 @@ async function uploadToDrive(filePath, storeName) {
     body: fs.createReadStream(filePath)
   };
 
-  const file = await drive.files.create({
-    resource: fileMetadata,
-    media: media,
-    fields: 'id'
-  });
+  try {
+    const file = await drive.files.create({
+      resource: fileMetadata,
+      media: media,
+      fields: 'id'
+    });
 
-  console.log(`Uploaded to Drive: ${file.data.id}`);
+    console.log(`Uploaded to Drive: ${file.data.id}`);
+  } catch (uploadError) {
+    console.error('Upload error details:', uploadError.message);
+    
+    // If it's a storage quota issue, try to create in shared drive
+    if (uploadError.message.includes('storage quota')) {
+      console.log('Storage quota issue detected, trying shared drive...');
+      
+      try {
+        const sharedDrives = await drive.drives.list();
+        if (sharedDrives.data.drives && sharedDrives.data.drives.length > 0) {
+          const sharedDriveId = sharedDrives.data.drives[0].id;
+          
+          // Create folder in shared drive
+          const sharedFolder = await drive.files.create({
+            resource: { 
+              name: folderName, 
+              mimeType: 'application/vnd.google-apps.folder',
+              parents: [sharedDriveId]
+            },
+            supportsAllDrives: true,
+            fields: 'id'
+          });
+          
+          // Upload to shared drive
+          const sharedFileMetadata = {
+            name: `${storeName}-${new Date().toISOString().split('T')[0]}.csv`,
+            parents: [sharedFolder.data.id]
+          };
+          
+          const sharedFile = await drive.files.create({
+            resource: sharedFileMetadata,
+            media: media,
+            supportsAllDrives: true,
+            fields: 'id'
+          });
+          
+          console.log(`Uploaded to Shared Drive: ${sharedFile.data.id}`);
+        } else {
+          throw new Error('No shared drives available for upload');
+        }
+      } catch (sharedError) {
+        console.error('Shared drive upload failed:', sharedError.message);
+        throw sharedError;
+      }
+    } else {
+      throw uploadError;
+    }
+  }
 }
 
 module.exports = uploadToDrive;
