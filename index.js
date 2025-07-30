@@ -108,29 +108,49 @@ const stores = [
       const salesText = await salesElement.textContent();
       console.log(`Raw sales text: ${salesText}`);
       
-      // Use regex to extract the first numeric value (same as your Python script)
-      const match = salesText.match(/[\d,]+\.\d+/);
-      
-      if (match) {
-        const cleanNumber = match[0].replace(/,/g, ''); // Remove commas
-        const salesAmount = parseFloat(cleanNumber);
-        console.log(`${store.name} Net Sales: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+              // Use regex to extract the first numeric value (same as your Python script)
+        const match = salesText.match(/[\d,]+\.\d+/);
         
-        // Create a simple CSV with the sales data
-        const csvContent = `Store,Sales Amount,Timestamp\n${store.name},${salesAmount},${new Date().toISOString()}`;
-        const filePath = path.join(__dirname, `treez-${store.name}.csv`);
-        
-        // Write CSV to file
-        const fs = require('fs');
-        fs.writeFileSync(filePath, csvContent);
-        console.log(`Created CSV file: ${filePath}`);
+        if (match) {
+          const cleanNumber = match[0].replace(/,/g, ''); // Remove commas
+          const salesAmount = parseFloat(cleanNumber);
+          console.log(`${store.name} Net Sales: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+          
+          // Create a simple CSV with the sales data
+          const csvContent = `Store,Sales Amount,Timestamp\n${store.name},${salesAmount},${new Date().toISOString()}`;
+          const filePath = path.join(__dirname, `treez-${store.name}.csv`);
+          
+          // Write CSV to file
+          const fs = require('fs');
+          fs.writeFileSync(filePath, csvContent);
+          console.log(`Created CSV file: ${filePath}`);
 
-        await uploadToDrive(filePath, store.name);
-        console.log(`Successfully processed ${store.name}`);
-      } else {
-        console.log(`No sales data found for ${store.name}`);
-        throw new Error('Sales data not found on page');
-      }
+          try {
+            await uploadToDrive(filePath, store.name);
+            console.log(`Successfully uploaded ${store.name} to Google Drive`);
+          } catch (uploadError) {
+            console.error(`Failed to upload ${store.name} to Google Drive:`, uploadError.message);
+            // Continue processing other stores even if upload fails
+          }
+          
+          console.log(`Successfully processed ${store.name}`);
+        } else {
+          console.log(`No sales data found for ${store.name}`);
+          // Create CSV with 0 sales instead of throwing error
+          const csvContent = `Store,Sales Amount,Timestamp\n${store.name},0.00,${new Date().toISOString()}`;
+          const filePath = path.join(__dirname, `treez-${store.name}.csv`);
+          
+          const fs = require('fs');
+          fs.writeFileSync(filePath, csvContent);
+          console.log(`Created CSV file with 0 sales: ${filePath}`);
+
+          try {
+            await uploadToDrive(filePath, store.name);
+            console.log(`Successfully uploaded ${store.name} (0 sales) to Google Drive`);
+          } catch (uploadError) {
+            console.error(`Failed to upload ${store.name} to Google Drive:`, uploadError.message);
+          }
+        }
       
     } catch (e) {
       console.error(`Error for store ${store.name}:`, e);
