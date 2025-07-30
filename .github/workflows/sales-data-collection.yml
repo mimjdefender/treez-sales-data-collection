@@ -15,6 +15,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
       
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -40,6 +42,15 @@ jobs:
       
     - name: Test Google Drive credentials
       run: node test-credentials.js
+      
+    - name: Show current code version
+      run: |
+        echo "Current commit: $(git rev-parse HEAD)"
+        echo "UploadToDrive.js content preview:"
+        head -20 uploadToDrive.js
+        
+    - name: Test upload function
+      run: node test-upload.js
       
     - name: Run sales data collection
       run: npm start
