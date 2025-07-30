@@ -110,6 +110,37 @@ async function uploadToDrive(filePath, storeName) {
     }
   }
 
+  // Re-verify folder exists before upload
+  console.log(`Re-verifying folder before upload: ${folderId}`);
+  try {
+    await drive.files.get({
+      fileId: folderId,
+      supportsAllDrives: true,
+      fields: 'id,name'
+    });
+    console.log(`✅ Folder still accessible before upload`);
+  } catch (verifyError) {
+    console.log(`❌ Folder not accessible before upload, creating new one`);
+    // Create a new folder
+    const sharedDrives = await drive.drives.list();
+    if (sharedDrives.data.drives && sharedDrives.data.drives.length > 0) {
+      const sharedDriveId = sharedDrives.data.drives[0].id;
+      const newFolder = await drive.files.create({
+        resource: { 
+          name: folderName, 
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [sharedDriveId]
+        },
+        supportsAllDrives: true,
+        fields: 'id,name'
+      });
+      folderId = newFolder.data.id;
+      console.log(`✅ Created new folder: ${newFolder.data.name} (ID: ${folderId})`);
+    } else {
+      throw new Error('No shared drives available for folder creation');
+    }
+  }
+
   const fileMetadata = {
     name: `${storeName}-${new Date().toISOString().split('T')[0]}.csv`,
     parents: [folderId]
@@ -119,14 +150,16 @@ async function uploadToDrive(filePath, storeName) {
     body: fs.createReadStream(filePath)
   };
 
+  console.log(`Attempting upload to folder: ${folderId}`);
   try {
     const file = await drive.files.create({
       resource: fileMetadata,
       media: media,
-      fields: 'id'
+      supportsAllDrives: true,
+      fields: 'id,name'
     });
 
-    console.log(`Uploaded to Drive: ${file.data.id}`);
+    console.log(`✅ Uploaded to Drive: ${file.data.name} (ID: ${file.data.id})`);
   } catch (uploadError) {
     console.error('Upload error details:', uploadError.message);
     
@@ -163,7 +196,7 @@ async function uploadToDrive(filePath, storeName) {
             fields: 'id'
           });
           
-          console.log(`Uploaded to Shared Drive: ${sharedFile.data.id}`);
+          console.log(`✅ Uploaded to Shared Drive: ${sharedFile.data.id}`);
         } else {
           throw new Error('No shared drives available for upload');
         }
