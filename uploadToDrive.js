@@ -31,8 +31,21 @@ async function uploadToDrive(filePath, storeName) {
         
         if (folderList.data.files && folderList.data.files.length > 0) {
           folderId = folderList.data.files[0].id;
-          console.log(`Found folder in shared drive: ${sharedDrive.name}`);
-          break;
+          console.log(`Found folder in shared drive: ${sharedDrive.name} with ID: ${folderId}`);
+          
+          // Verify the folder still exists and is accessible
+          try {
+            await drive.files.get({
+              fileId: folderId,
+              supportsAllDrives: true,
+              fields: 'id,name'
+            });
+            console.log(`✅ Folder verified and accessible`);
+            break;
+          } catch (verifyError) {
+            console.log(`❌ Folder not accessible, trying to create new one`);
+            folderId = null;
+          }
         }
       } catch (e) {
         console.log(`No access to shared drive: ${sharedDrive.name}`);
@@ -57,24 +70,38 @@ async function uploadToDrive(filePath, storeName) {
         const sharedDrives = await drive.drives.list();
         if (sharedDrives.data.drives && sharedDrives.data.drives.length > 0) {
           const sharedDriveId = sharedDrives.data.drives[0].id;
-          const folder = await drive.files.create({
-            resource: { 
-              name: folderName, 
-              mimeType: 'application/vnd.google-apps.folder',
-              parents: [sharedDriveId]
-            },
-            supportsAllDrives: true,
-            fields: 'id'
-          });
-          folderId = folder.data.id;
-          console.log(`Created folder in shared drive: ${sharedDrives.data.drives[0].name}`);
+          console.log(`Creating folder in shared drive: ${sharedDrives.data.drives[0].name} (ID: ${sharedDriveId})`);
+          
+          try {
+            const folder = await drive.files.create({
+              resource: { 
+                name: folderName, 
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [sharedDriveId]
+              },
+              supportsAllDrives: true,
+              fields: 'id,name'
+            });
+            folderId = folder.data.id;
+            console.log(`✅ Created folder in shared drive: ${folder.data.name} (ID: ${folderId})`);
+          } catch (createError) {
+            console.log(`❌ Failed to create folder in shared drive: ${createError.message}`);
+            throw createError;
+          }
         } else {
           // Fallback to regular drive
-          const folder = await drive.files.create({
-            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder' },
-            fields: 'id'
-          });
-          folderId = folder.data.id;
+          console.log('No shared drives available, trying regular drive...');
+          try {
+            const folder = await drive.files.create({
+              resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder' },
+              fields: 'id,name'
+            });
+            folderId = folder.data.id;
+            console.log(`✅ Created folder in regular drive: ${folder.data.name} (ID: ${folderId})`);
+          } catch (createError) {
+            console.log(`❌ Failed to create folder in regular drive: ${createError.message}`);
+            throw createError;
+          }
         }
       }
     } catch (e) {
