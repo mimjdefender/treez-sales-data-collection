@@ -41,14 +41,16 @@ jobs:
     - name: Run sales data collection
       run: npm start
       
-    - name: Upload logs on failure
-      if: failure()
+    - name: Upload logs and debug files
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: error-logs
+        name: debug-files
         path: |
           *.log
           *.csv
           treez-*.csv
+          debug-*.png
+          error-*.png
         retention-days: 7
         if-no-files-found: warn 
