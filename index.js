@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const uploadToDrive = require('./uploadToDrive');
+const SalesReporter = require('./reporting');
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
@@ -164,5 +165,21 @@ const stores = [
     } finally {
       await browser.close();
     }
+  }
+
+  // Generate reports based on time
+  const reporter = new SalesReporter();
+  const currentHour = new Date().getHours();
+  const currentMinute = new Date().getMinutes();
+  
+  // Check if it's 4:20 PM (16:20) or 9:15 PM (21:15)
+  if (currentHour === 16 && currentMinute >= 20 && currentMinute < 25) {
+    console.log('🕐 4:20 PM detected - generating 4:20 PM report...');
+    await reporter.run420Report();
+  } else if (currentHour === 21 && currentMinute >= 15 && currentMinute < 20) {
+    console.log('🕐 9:15 PM detected - generating final daily report...');
+    await reporter.run915Report();
+  } else {
+    console.log('📊 Data collection completed. Reports will be generated at 4:20 PM and 9:15 PM EST.');
   }
 })();
