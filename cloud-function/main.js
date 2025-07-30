@@ -4,12 +4,42 @@ const fs = require('fs');
 const path = require('path');
 
 const stores = [
-  { name: 'cheboygan', url: 'https://medscafecheboygan.treez.io' },
-  { name: 'lowell', url: 'https://medscafelowell.treez.io' },
-  { name: 'alpena', url: 'https://medscafealpena.treez.io' },
-  { name: 'gaylord', url: 'https://medscafegaylord.treez.io' },
-  { name: 'rc', url: 'https://medscaferc.treez.io' },
-  { name: 'manistee', url: 'https://medscafemanistee.treez.io' }
+  { 
+    name: 'cheboygan', 
+    url: 'https://medscafecheboygan.treez.io',
+    reportUrl: 'https://medscafecheboygan.treez.io/portalDispensary/portal/ProductsReport',
+    selector: '#root > div > div:nth-child(5) > div > div > div.sc-bdVaJa.IDPDZ > div:nth-child(6) > div.summary-item.sc-htpNat.dMpSlv > div.sc-ifAKCX.hDwfsa'
+  },
+  { 
+    name: 'lowell', 
+    url: 'https://medscafelowell.treez.io',
+    reportUrl: 'https://medscafelowell.treez.io/portalDispensary/portal/ProductsReport',
+    selector: '#root > div > div:nth-child(5) > div > div > div.sc-bdVaJa.IDPDZ > div:nth-child(6) > div'
+  },
+  { 
+    name: 'alpena', 
+    url: 'https://medscafealpena.treez.io',
+    reportUrl: 'https://medscafealpena.treez.io/portalDispensary/portal/ProductsReport',
+    selector: '#root > div > div:nth-child(5) > div > div > div.sc-bdVaJa.IDPDZ > div:nth-child(6) > div'
+  },
+  { 
+    name: 'gaylord', 
+    url: 'https://medscafegaylord.treez.io',
+    reportUrl: 'https://medscafegaylord.treez.io/portalDispensary/portal/ProductsReport',
+    selector: '#root > div > div:nth-child(5) > div > div > div.sc-bdVaJa.IDPDZ > div:nth-child(6) > div'
+  },
+  { 
+    name: 'rc', 
+    url: 'https://medscaferc.treez.io',
+    reportUrl: 'https://medscaferc.treez.io/portalDispensary/portal/ProductsReport',
+    selector: '#root > div > div:nth-child(5) > div > div > div.sc-bdVaJa.IDPDZ > div:nth-child(6) > div'
+  },
+  { 
+    name: 'manistee', 
+    url: 'https://medscafemanistee.treez.io',
+    reportUrl: 'https://medscafemanistee.treez.io/portalDispensary/portal/ProductsReport',
+    selector: '#root > div > div:nth-child(5) > div > div > div.sc-bdVaJa.IDPDZ > div:nth-child(6) > div'
+  }
 ];
 
 async function uploadToDrive(filePath, storeName) {
@@ -68,8 +98,8 @@ exports.collectSalesData = async (req, res) => {
       try {
         console.log(`Logging into ${store.name}`);
         
-        // Navigate to the login page first
-        await page.goto(`${store.url}/backoffice/login`, { 
+        // Navigate to the login page first (using the same URL as your Python script)
+        await page.goto(`${store.url}/portalDispensary/portal/login`, { 
           waitUntil: 'networkidle',
           timeout: 60000 
         });
@@ -77,121 +107,64 @@ exports.collectSalesData = async (req, res) => {
         // Wait for page to load
         await page.waitForLoadState('domcontentloaded');
         
-        // Try multiple selectors for email field
-        const emailSelectors = [
-          'input[name="email"]',
-          'input[type="email"]',
-          'input[id*="email"]',
-          'input[placeholder*="email" i]',
-          'input[placeholder*="Email" i]'
-        ];
-        
-        let emailField = null;
-        for (const selector of emailSelectors) {
-          try {
-            emailField = await page.waitForSelector(selector, { timeout: 10000 });
-            console.log(`Found email field with selector: ${selector}`);
-            break;
-          } catch (e) {
-            console.log(`Selector ${selector} not found, trying next...`);
-          }
-        }
-        
-        if (!emailField) {
-          throw new Error('Email field not found on page');
-        }
+        // Use the same selectors as your Python script
+        const emailField = await page.waitForSelector('#Email', { timeout: 10000 });
+        console.log(`Found email field with selector: #Email`);
         
         // Fill in credentials
         await emailField.fill(process.env.TREEZ_EMAIL);
         
-        // Find password field
-        const passwordSelectors = [
-          'input[name="password"]',
-          'input[type="password"]',
-          'input[id*="password"]'
-        ];
-        
-        let passwordField = null;
-        for (const selector of passwordSelectors) {
-          try {
-            passwordField = await page.waitForSelector(selector, { timeout: 10000 });
-            console.log(`Found password field with selector: ${selector}`);
-            break;
-          } catch (e) {
-            console.log(`Selector ${selector} not found, trying next...`);
-          }
-        }
-        
-        if (!passwordField) {
-          throw new Error('Password field not found on page');
-        }
+        // Find password field using the same selector as Python script
+        const passwordField = await page.waitForSelector('#Password', { timeout: 10000 });
+        console.log(`Found password field with selector: #Password`);
         
         await passwordField.fill(process.env.TREEZ_PASSWORD);
         
-        // Find and click submit button
-        const submitSelectors = [
-          'button[type="submit"]',
-          'input[type="submit"]',
-          'button:has-text("Login")',
-          'button:has-text("Sign In")',
-          'button:has-text("Log In")'
-        ];
+        // Press Enter to submit (same as your Python script)
+        await passwordField.press('Enter');
         
-        let submitButton = null;
-        for (const selector of submitSelectors) {
-          try {
-            submitButton = await page.waitForSelector(selector, { timeout: 10000 });
-            console.log(`Found submit button with selector: ${selector}`);
-            break;
-          } catch (e) {
-            console.log(`Selector ${selector} not found, trying next...`);
-          }
-        }
+        // Wait for navigation
+        await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 60000 });
         
-        if (!submitButton) {
-          throw new Error('Submit button not found on page');
-        }
-        
-        // Click submit and wait for navigation
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: 'networkidle', timeout: 60000 }),
-          submitButton.click()
-        ]);
-        
-        // Navigate to the reporting page
-        await page.goto(`${store.url}/backoffice/reporting/products`, { 
+        // Navigate to the Products Report page (same as your Python script)
+        await page.goto(store.reportUrl, { 
           waitUntil: 'networkidle',
           timeout: 60000 
         });
         
-        // Wait for the download button
-        const downloadSelectors = [
-          'text=Download Report',
-          'button:has-text("Download")',
-          'a:has-text("Download")',
-          '[data-testid="download-report"]'
-        ];
+        // Wait for the sales data element using the same selector as your Python script
+        const salesElement = await page.waitForSelector(store.selector, { timeout: 30000 });
+        console.log(`Found sales element with selector: ${store.selector}`);
         
-        let downloadButton = null;
-        for (const selector of downloadSelectors) {
-          try {
-            downloadButton = await page.waitForSelector(selector, { timeout: 30000 });
-            console.log(`Found download button with selector: ${selector}`);
-            break;
-          } catch (e) {
-            console.log(`Download selector ${selector} not found, trying next...`);
-          }
+        // Extract the sales data
+        const salesText = await salesElement.textContent();
+        console.log(`Raw sales text: ${salesText}`);
+        
+        // Use regex to extract the first numeric value (same as your Python script)
+        const match = salesText.match(/[\d,]+\.\d+/);
+        
+        if (match) {
+          const cleanNumber = match[0].replace(/,/g, ''); // Remove commas
+          const salesAmount = parseFloat(cleanNumber);
+          console.log(`${store.name} Net Sales: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+          
+          // Create a simple CSV with the sales data
+          const csvContent = `Store,Sales Amount,Timestamp\n${store.name},${salesAmount},${new Date().toISOString()}`;
+          const filePath = path.join('/tmp', `treez-${store.name}.csv`);
+          
+          // Write CSV to file
+          fs.writeFileSync(filePath, csvContent);
+          console.log(`Created CSV file: ${filePath}`);
+
+          await uploadToDrive(filePath, store.name);
+          results.push({ store: store.name, status: 'success', sales: salesAmount });
+          
+          // Clean up temp file
+          fs.unlinkSync(filePath);
+        } else {
+          console.log(`No sales data found for ${store.name}`);
+          results.push({ store: store.name, status: 'error', error: 'Sales data not found on page' });
         }
-        
-        if (!downloadButton) {
-          throw new Error('Download button not found on page');
-        }
-        
-        // Download the report
-        const [ download ] = await Promise.all([
-          page.waitForEvent('download'),
-          downloadButton.click()
-        ]);
 
         const filePath = path.join('/tmp', `treez-${store.name}.csv`);
         await download.saveAs(filePath);
