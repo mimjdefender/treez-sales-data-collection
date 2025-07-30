@@ -180,6 +180,23 @@ const stores = [
     console.log('🕐 9:15 PM detected - generating final daily report...');
     await reporter.run915Report();
   } else {
-    console.log('📊 Data collection completed. Reports will be generated at 4:20 PM and 9:15 PM EST.');
+    // For testing purposes, generate reports if we have data
+    console.log('📊 Data collection completed. Checking for report generation...');
+    
+    // If we have sales data, generate appropriate report
+    const sales = reporter.loadTodaySales();
+    const hasData = Object.values(sales).some(amount => amount > 0);
+    
+    if (hasData) {
+      if (currentHour < 18) { // Before 6 PM - 4:20 PM report
+        console.log('🕐 Generating 4:20 PM report...');
+        await reporter.run420Report();
+      } else { // After 6 PM - 9:15 PM report
+        console.log('🕐 Generating 9:15 PM final report...');
+        await reporter.run915Report();
+      }
+    } else {
+      console.log('📊 No sales data available for reports.');
+    }
   }
 })();
