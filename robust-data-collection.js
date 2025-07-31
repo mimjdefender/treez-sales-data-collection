@@ -138,9 +138,9 @@ async function scrapeStoreData(store) {
     const salesElement = await page.waitForSelector(store.selector, { timeout: 15000 });
     const salesText = await salesElement.textContent();
     
-    const match = salesText.match(/[\d,]+\.\d+/);
+    const match = salesText.match(/\$([\d,]+\.\d+)/);
     if (match) {
-      const cleanNumber = match[0].replace(/,/g, '');
+      const cleanNumber = match[1].replace(/,/g, '');
       return parseFloat(cleanNumber);
     }
     
