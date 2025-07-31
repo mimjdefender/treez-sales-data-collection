@@ -143,7 +143,7 @@ async function scrapeStoreData(store) {
     console.log(`🔍 Page loaded, starting sales extraction...`);
     
     // Extract sales data - look for Net Sales specifically
-    const salesText = await page.evaluate(() => {
+    let salesText = await page.evaluate(() => {
       // Find all summary items
       const summaryItems = document.querySelectorAll('.summary-item');
       console.log('Found summary items:', summaryItems.length);
@@ -182,6 +182,60 @@ async function scrapeStoreData(store) {
     });
     
     console.log(`🔍 Raw sales text found: "${salesText}"`);
+    
+    // If we got $0.00, try a different approach - wait longer and try again
+    if (salesText === '$0.00') {
+      console.log(`⚠️ Got $0.00, trying alternative approach...`);
+      
+      // Wait a bit longer and try again
+      await page.waitForTimeout(5000);
+      
+      const retrySalesText = await page.evaluate(() => {
+        const summaryItems = document.querySelectorAll('.summary-item');
+        console.log('Retry - Found summary items:', summaryItems.length);
+        
+        for (let i = 0; i < summaryItems.length; i++) {
+          const item = summaryItems[i];
+          const text = item.textContent;
+          console.log(`Retry - Item ${i + 1}: "${text}"`);
+          
+          if (text && text.includes('Net Sales')) {
+            console.log(`Retry - Found Net Sales in item ${i + 1}`);
+            
+            // Try to get all dollar elements in this item
+            const allDollarElements = item.querySelectorAll('.sc-ifAKCX.hDwfsa');
+            console.log(`Retry - Found ${allDollarElements.length} dollar elements`);
+            
+            for (let j = 0; j < allDollarElements.length; j++) {
+              const amount = allDollarElements[j].textContent;
+              console.log(`Retry - Dollar element ${j + 1}: "${amount}"`);
+              
+              if (amount && amount !== '$0.00') {
+                console.log(`Retry - Using non-zero amount: "${amount}"`);
+                return amount;
+              }
+            }
+            
+            // If all dollar elements are $0.00, try regex on full text
+            const fullText = item.textContent;
+            console.log('Retry - Full Net Sales item text:', fullText);
+            
+            const match = fullText.match(/\$([\d,]+\.\d+)/);
+            if (match) {
+              console.log('Retry - Regex match found:', match[0]);
+              return match[0];
+            }
+          }
+        }
+        return null;
+      });
+      
+      console.log(`🔍 Retry sales text found: "${retrySalesText}"`);
+      
+      if (retrySalesText && retrySalesText !== '$0.00') {
+        salesText = retrySalesText;
+      }
+    }
     
     if (salesText) {
       const match = salesText.match(/\$([\d,]+\.\d+)/);
