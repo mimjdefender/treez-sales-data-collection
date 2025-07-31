@@ -241,7 +241,24 @@ async function scrapeStoreData(store) {
       const match = salesText.match(/\$([\d,]+\.\d+)/);
       if (match) {
         const cleanNumber = match[1].replace(/,/g, '');
-        return parseFloat(cleanNumber);
+        const salesAmount = parseFloat(cleanNumber);
+        
+        // Check if this is a final collection and stores are closed
+        const isFinalCollection = process.env.COLLECTION_TIME === "final";
+        const currentTime = new Date();
+        const isAfterClose = currentTime.getHours() >= 21; // 9 PM
+        
+        if (salesAmount === 0 && isFinalCollection && isAfterClose) {
+          console.log(`⚠️ Stores are closed (after 9:00 PM) - sales data may be reset to zero`);
+          console.log(`📊 This is expected behavior for final collection after store closing`);
+          
+          // For final collection after store closing, we might want to use the last known sales data
+          // or accept that the data is zero because stores are closed
+          console.log(`✅ Accepting $0.00 as valid for closed stores`);
+          return 0;
+        }
+        
+        return salesAmount;
       }
     }
     
