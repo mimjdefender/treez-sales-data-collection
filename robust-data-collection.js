@@ -134,6 +134,9 @@ async function scrapeStoreData(store) {
       timeout: 30000 
     });
     
+    // Wait for the page to fully load
+    await page.waitForTimeout(10000);
+    
     // Extract sales data - look for Net Sales specifically
     const salesText = await page.evaluate(() => {
       // Find all elements with text content
@@ -155,6 +158,8 @@ async function scrapeStoreData(store) {
       }
       return null;
     });
+    
+    console.log(`🔍 Raw sales text found: "${salesText}"`);
     
     if (salesText) {
       const match = salesText.match(/\$([\d,]+\.\d+)/);
