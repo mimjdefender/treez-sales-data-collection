@@ -139,20 +139,22 @@ async function scrapeStoreData(store) {
     
     // Extract sales data - look for Net Sales specifically
     const salesText = await page.evaluate(() => {
-      // Find all elements with text content
-      const elements = Array.from(document.querySelectorAll('*'));
+      // Find all summary items
+      const summaryItems = document.querySelectorAll('.summary-item');
+      console.log('Found summary items:', summaryItems.length);
       
-      // Look for "Net Sales" text
-      for (const element of elements) {
-        if (element.textContent && element.textContent.trim() === 'Net Sales') {
-          // Find the parent container
-          const parent = element.closest('.summary-item') || element.parentElement;
-          if (parent) {
-            // Look for dollar amount in the same container
-            const dollarElement = parent.querySelector('.sc-ifAKCX.hDwfsa');
-            if (dollarElement) {
-              return dollarElement.textContent;
-            }
+      // Look for the one containing "Net Sales"
+      for (const item of summaryItems) {
+        const text = item.textContent;
+        console.log('Summary item text:', text);
+        
+        if (text && text.includes('Net Sales')) {
+          // Find the dollar amount in this summary item
+          const dollarElement = item.querySelector('.sc-ifAKCX.hDwfsa');
+          console.log('Net Sales dollar element:', dollarElement ? dollarElement.textContent : 'none');
+          
+          if (dollarElement) {
+            return dollarElement.textContent;
           }
         }
       }
