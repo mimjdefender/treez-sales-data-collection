@@ -53,7 +53,9 @@ const fallbackData = {
 };
 
 async function robustDataCollection() {
-  console.log('🚀 Starting robust data collection...');
+  const isFinalCollection = process.env.COLLECTION_TIME === "final";
+  console.log(`🚀 Starting ${isFinalCollection ? 'FINAL' : 'MID-DAY'} data collection...`);
+  console.log(`⏰ Collection time: ${isFinalCollection ? '9:15 PM (stores closed at 9:00 PM)' : '4:20 PM (mid-day update)'}`);
   
   const results = {};
   let successCount = 0;
@@ -101,6 +103,7 @@ async function robustDataCollection() {
   console.log(`✅ Successful scrapes: ${successCount}`);
   console.log(`⚠️ Fallback data used: ${failureCount}`);
   console.log(`💰 Total Sales: $${Object.values(results).reduce((sum, amount) => sum + amount, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`📅 Collection Type: ${isFinalCollection ? 'FINAL (9:15 PM)' : 'MID-DAY (4:20 PM)'}`);
 
   return results;
 }

@@ -186,7 +186,7 @@ class SalesReporter {
     const totalSales = Object.values(sales).reduce((sum, amount) => sum + amount, 0);
     const topStore = sortedStores[0];
 
-    // Update streak data
+    // Update streak data (this is the final update of the day)
     const streakData = this.loadStreakData();
     const today = new Date().toISOString().split('T')[0];
     
