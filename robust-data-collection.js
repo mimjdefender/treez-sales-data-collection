@@ -134,14 +134,34 @@ async function scrapeStoreData(store) {
       timeout: 30000 
     });
     
-    // Extract sales data
-    const salesElement = await page.waitForSelector(store.selector, { timeout: 15000 });
-    const salesText = await salesElement.textContent();
+    // Extract sales data - look for Net Sales specifically
+    const salesText = await page.evaluate(() => {
+      // Find all elements with text content
+      const elements = Array.from(document.querySelectorAll('*'));
+      
+      // Look for "Net Sales" text
+      for (const element of elements) {
+        if (element.textContent && element.textContent.trim() === 'Net Sales') {
+          // Find the parent container
+          const parent = element.closest('.summary-item') || element.parentElement;
+          if (parent) {
+            // Look for dollar amount in the same container
+            const dollarElement = parent.querySelector('.sc-ifAKCX.hDwfsa');
+            if (dollarElement) {
+              return dollarElement.textContent;
+            }
+          }
+        }
+      }
+      return null;
+    });
     
-    const match = salesText.match(/\$([\d,]+\.\d+)/);
-    if (match) {
-      const cleanNumber = match[1].replace(/,/g, '');
-      return parseFloat(cleanNumber);
+    if (salesText) {
+      const match = salesText.match(/\$([\d,]+\.\d+)/);
+      if (match) {
+        const cleanNumber = match[1].replace(/,/g, '');
+        return parseFloat(cleanNumber);
+      }
     }
     
     return 0;
