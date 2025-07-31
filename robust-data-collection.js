@@ -162,7 +162,19 @@ async function scrapeStoreData(store) {
           console.log('Net Sales dollar element:', dollarElement ? dollarElement.textContent : 'none');
           
           if (dollarElement) {
-            return dollarElement.textContent;
+            // Make sure we're getting the correct amount by checking the full text
+            const fullText = item.textContent;
+            console.log('Full Net Sales item text:', fullText);
+            
+            // Extract the dollar amount from the full text using regex
+            const match = fullText.match(/\$([\d,]+\.\d+)/);
+            if (match) {
+              console.log('Regex match found:', match[0]);
+              return match[0]; // Return the full match including the dollar sign
+            } else {
+              console.log('No regex match in full text, using dollar element');
+              return dollarElement.textContent;
+            }
           }
         }
       }
