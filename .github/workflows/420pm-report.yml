@@ -1,15 +1,13 @@
-name: Generate Sales Reports
+name: 4:20 PM Sales Report
 
 on:
   schedule:
     # 4:20 PM EST (9:20 PM UTC)
     - cron: '20 21 * * *'
-    # 9:15 PM EST (2:15 AM UTC next day)
-    - cron: '15 2 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
-  generate-reports:
+  generate-420-report:
     runs-on: ubuntu-latest
     
     steps:
@@ -35,14 +33,17 @@ jobs:
         echo "GOOGLE_FOLDER_NAME=${{ secrets.GOOGLE_FOLDER_NAME }}" >> .env
         echo "GOOGLE_CHAT_WEBHOOK_URL=${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}" >> .env
 
-    - name: Generate reports
-      run: node test-reports-now.js
+    - name: Collect sales data
+      run: node robust-data-collection.js
+
+    - name: Generate 4:20 PM report
+      run: node generate-420-report.js
 
     - name: Upload debug files
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: report-debug-files
+        name: 420pm-debug-files
         path: |
           *.log
           *.csv
