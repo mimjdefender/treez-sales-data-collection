@@ -137,6 +137,11 @@ async function scrapeStoreData(store) {
     // Wait for the page to fully load
     await page.waitForTimeout(10000);
     
+    // Wait for summary items to be present
+    await page.waitForSelector('.summary-item', { timeout: 15000 });
+    
+    console.log(`🔍 Page loaded, starting sales extraction...`);
+    
     // Extract sales data - look for Net Sales specifically
     const salesText = await page.evaluate(() => {
       // Find all summary items
@@ -144,11 +149,14 @@ async function scrapeStoreData(store) {
       console.log('Found summary items:', summaryItems.length);
       
       // Look for the one containing "Net Sales"
-      for (const item of summaryItems) {
+      for (let i = 0; i < summaryItems.length; i++) {
+        const item = summaryItems[i];
         const text = item.textContent;
-        console.log('Summary item text:', text);
+        console.log(`Item ${i + 1}: "${text}"`);
         
         if (text && text.includes('Net Sales')) {
+          console.log(`Found Net Sales in item ${i + 1}`);
+          
           // Find the dollar amount in this summary item
           const dollarElement = item.querySelector('.sc-ifAKCX.hDwfsa');
           console.log('Net Sales dollar element:', dollarElement ? dollarElement.textContent : 'none');
