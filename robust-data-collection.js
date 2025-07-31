@@ -59,7 +59,6 @@ async function robustDataCollection() {
   
   const results = {};
   let successCount = 0;
-  let failureCount = 0;
 
   for (const store of stores) {
     console.log(`\n📊 Processing ${store.name}...`);
@@ -73,10 +72,8 @@ async function robustDataCollection() {
         successCount++;
         console.log(`✅ ${store.name}: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       } else {
-        // Use fallback data
-        results[store.name] = fallbackData[store.name];
-        failureCount++;
-        console.log(`⚠️ ${store.name}: Using fallback data - $${fallbackData[store.name].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        // Fail instead of using fallback data
+        throw new Error(`Failed to scrape data for ${store.name} - no sales amount found`);
       }
       
       // Create CSV file
@@ -88,20 +85,13 @@ async function robustDataCollection() {
     } catch (error) {
       console.error(`❌ Error processing ${store.name}:`, error.message);
       
-      // Use fallback data
-      results[store.name] = fallbackData[store.name];
-      failureCount++;
-      
-      const csvContent = `Store,Sales Amount,Timestamp\n${store.name},${fallbackData[store.name]},${new Date().toISOString()}`;
-      const filePath = path.join(__dirname, `treez-${store.name}.csv`);
-      fs.writeFileSync(filePath, csvContent);
-      console.log(`📄 CSV created with fallback data: ${filePath}`);
+      // Fail instead of using fallback data
+      throw new Error(`Failed to process ${store.name}: ${error.message}`);
     }
   }
 
   console.log(`\n📊 Collection Summary:`);
   console.log(`✅ Successful scrapes: ${successCount}`);
-  console.log(`⚠️ Fallback data used: ${failureCount}`);
   console.log(`💰 Total Sales: $${Object.values(results).reduce((sum, amount) => sum + amount, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
   console.log(`📅 Collection Type: ${isFinalCollection ? 'FINAL (9:15 PM)' : 'MID-DAY (4:20 PM)'}`);
 
