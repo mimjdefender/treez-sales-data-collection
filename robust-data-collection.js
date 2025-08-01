@@ -140,6 +140,26 @@ async function scrapeStoreData(store) {
     // Wait for summary items to be present
     await page.waitForSelector('.summary-item', { timeout: 15000 });
     
+    // Set the date on the page to ensure we get the correct data
+    const targetDate = getTargetDate();
+    console.log(`📅 Setting date to ${targetDate.month}/${targetDate.day}/${targetDate.year}...`);
+    
+    await page.evaluate((date) => {
+      // Find and set the date input field
+      const dateInput = document.querySelector('input[type="date"]');
+      if (dateInput) {
+        const dateString = `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
+        dateInput.value = dateString;
+        dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log(`Date set to: ${dateString}`);
+      } else {
+        console.log('No date input found, continuing with default date');
+      }
+    }, targetDate);
+    
+    // Wait for date to be set and page to update
+    await page.waitForTimeout(3000);
+    
     // Use the same logic for both MID-DAY and FINAL collections
     // since the 4:20 PM (MID-DAY) works perfectly on GitHub
     const isFinalCollection = process.env.COLLECTION_TIME === "final";
@@ -285,6 +305,15 @@ async function scrapeStoreData(store) {
   } finally {
     await browser.close();
   }
+}
+
+// Helper function to get the target date for date input
+function getTargetDate() {
+  const currentDate = new Date();
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth() + 1; // getMonth() is 0-indexed
+  const day = currentDate.getDate();
+  return { year, month, day };
 }
 
 // Run the collection
