@@ -151,15 +151,41 @@ async function scrapeStoreData(store) {
       
       // Wait for summary items to be present again
       await page.waitForSelector('.summary-item', { timeout: 20000 });
+      
+      // Additional wait for GitHub Actions environment
+      console.log(`🌐 GitHub Actions environment detected - adding extra wait...`);
+      await page.waitForTimeout(10000);
+      
+      // Verify summary items are still present
+      const summaryItemsCount = await page.evaluate(() => {
+        const items = document.querySelectorAll('.summary-item');
+        console.log('GitHub Actions - Found summary items:', items.length);
+        return items.length;
+      });
+      
+      console.log(`📊 GitHub Actions - Summary items count: ${summaryItemsCount}`);
+      
+      if (summaryItemsCount === 0) {
+        console.log(`⚠️ No summary items found, waiting longer...`);
+        await page.waitForTimeout(15000);
+        await page.waitForSelector('.summary-item', { timeout: 30000 });
+      }
     }
     
     console.log(`🔍 Page loaded, starting sales extraction...`);
     
     // Extract sales data - look for Net Sales specifically
-    let salesText = await page.evaluate(() => {
+    const salesText = await page.evaluate(() => {
       // Find all summary items
       const summaryItems = document.querySelectorAll('.summary-item');
       console.log('Found summary items:', summaryItems.length);
+      
+      // Log all summary items for debugging
+      for (let i = 0; i < summaryItems.length; i++) {
+        const item = summaryItems[i];
+        const text = item.textContent;
+        console.log(`GitHub Actions - Item ${i + 1}: "${text}"`);
+      }
       
       // Look for the one containing "Net Sales"
       for (let i = 0; i < summaryItems.length; i++) {
