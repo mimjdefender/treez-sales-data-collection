@@ -140,36 +140,12 @@ async function scrapeStoreData(store) {
     // Wait for summary items to be present
     await page.waitForSelector('.summary-item', { timeout: 15000 });
     
-    // Additional wait for FINAL collection to ensure page is fully load
+    // Use the same logic for both MID-DAY and FINAL collections
+    // since the 4:20 PM (MID-DAY) works perfectly on GitHub
     const isFinalCollection = process.env.COLLECTION_TIME === "final";
     if (isFinalCollection) {
-      console.log(`⏰ FINAL collection - waiting extra time for page to fully load...`);
-      await page.waitForTimeout(15000); // Extra wait for final collection
-      
-      // Wait for network to be idle
-      await page.waitForLoadState('networkidle', { timeout: 30000 });
-      
-      // Wait for summary items to be present again
-      await page.waitForSelector('.summary-item', { timeout: 20000 });
-      
-      // Additional wait for GitHub Actions environment
-      console.log(`🌐 GitHub Actions environment detected - adding extra wait...`);
-      await page.waitForTimeout(10000);
-      
-      // Verify summary items are still present
-      const summaryItemsCount = await page.evaluate(() => {
-        const items = document.querySelectorAll('.summary-item');
-        console.log('GitHub Actions - Found summary items:', items.length);
-        return items.length;
-      });
-      
-      console.log(`📊 GitHub Actions - Summary items count: ${summaryItemsCount}`);
-      
-      if (summaryItemsCount === 0) {
-        console.log(`⚠️ No summary items found, waiting longer...`);
-        await page.waitForTimeout(15000);
-        await page.waitForSelector('.summary-item', { timeout: 30000 });
-      }
+      console.log(`⏰ FINAL collection - using same logic as MID-DAY (which works on GitHub)`);
+      // Use the same timing as MID-DAY collection since it works perfectly
     }
     
     console.log(`🔍 Page loaded, starting sales extraction...`);
