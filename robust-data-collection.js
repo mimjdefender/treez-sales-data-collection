@@ -140,6 +140,19 @@ async function scrapeStoreData(store) {
     // Wait for summary items to be present
     await page.waitForSelector('.summary-item', { timeout: 15000 });
     
+    // Additional wait for FINAL collection to ensure page is fully load
+    const isFinalCollection = process.env.COLLECTION_TIME === "final";
+    if (isFinalCollection) {
+      console.log(`⏰ FINAL collection - waiting extra time for page to fully load...`);
+      await page.waitForTimeout(15000); // Extra wait for final collection
+      
+      // Wait for network to be idle
+      await page.waitForLoadState('networkidle', { timeout: 30000 });
+      
+      // Wait for summary items to be present again
+      await page.waitForSelector('.summary-item', { timeout: 20000 });
+    }
+    
     console.log(`🔍 Page loaded, starting sales extraction...`);
     
     // Extract sales data - look for Net Sales specifically
