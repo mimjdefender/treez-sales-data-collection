@@ -2,8 +2,8 @@ name: 9:15 PM Final Sales Report
 
 on:
   schedule:
-    # 9:15 PM EST (2:15 AM UTC next day)
-    - cron: '15 2 * * *'
+    # 6:15 PM EST (11:15 PM UTC same day) - Changed to avoid timezone date issue
+    - cron: '15 23 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
