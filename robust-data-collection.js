@@ -235,8 +235,23 @@ async function scrapeStoreData(store) {
         const cleanNumber = match[1].replace(/,/g, '');
         const salesAmount = parseFloat(cleanNumber);
         console.log(`💰 Sales amount: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-        return salesAmount;
+        
+        // If we got a non-zero amount, return it
+        if (salesAmount > 0) {
+          return salesAmount;
+        }
       }
+    }
+    
+    // If we got here, we either got $0.00 or no sales amount found
+    console.log(`⚠️ Got $0.00 or no sales amount, trying CSV fallback...`);
+    
+    // Try to download CSV and calculate from transactions
+    const csvSalesAmount = await downloadCSVAndCalculate(store, page);
+    
+    if (csvSalesAmount > 0) {
+      console.log(`✅ CSV calculation successful: $${csvSalesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      return csvSalesAmount;
     }
     
     console.log(`❌ No sales amount found`);
@@ -247,6 +262,140 @@ async function scrapeStoreData(store) {
     return 0;
   } finally {
     await browser.close();
+  }
+}
+
+async function downloadCSVAndCalculate(store, page) {
+  try {
+    console.log(`📊 Step 2: Looking for CSV download options...`);
+    
+    // Look for any export or download buttons
+    const exportButtons = await page.evaluate(() => {
+      const allButtons = document.querySelectorAll('button');
+      const exportInfo = [];
+      
+      for (let i = 0; i < allButtons.length; i++) {
+        const button = allButtons[i];
+        const text = button.textContent.toLowerCase();
+        if (text.includes('export') || text.includes('download') || text.includes('csv') || text.includes('excel')) {
+          exportInfo.push({
+            index: i + 1,
+            text: button.textContent.trim(),
+            className: button.className,
+            id: button.id
+          });
+        }
+      }
+      
+      return exportInfo;
+    });
+    
+    console.log(`📊 Export buttons found:`, exportButtons.length);
+    
+    // If we found export buttons, try to click them
+    if (exportButtons.length > 0) {
+      console.log(`📊 Trying to click export button: "${exportButtons[0].text}"`);
+      
+      // Try to click the first export button
+      await page.click(`button:has-text("${exportButtons[0].text}")`);
+      
+      // Wait for download to start
+      const downloadPromise = page.waitForEvent('download', { timeout: 10000 });
+      
+      try {
+        const download = await downloadPromise;
+        const downloadPath = path.join(__dirname, `${store.name}-transactions.csv`);
+        await download.saveAs(downloadPath);
+        
+        console.log(`📥 CSV downloaded: ${downloadPath}`);
+        
+        // Process the CSV to calculate Net Sales from transactions
+        const netSales = await calculateNetSalesFromCSV(downloadPath);
+        
+        console.log(`💰 Calculated Net Sales from CSV: $${netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        
+        return netSales;
+        
+      } catch (downloadError) {
+        console.log(`❌ CSV download failed:`, downloadError.message);
+      }
+    }
+    
+    // If no export buttons or download failed, try to find CSV data in the page
+    console.log(`📊 Looking for transaction data in the page...`);
+    
+    const transactionData = await page.evaluate(() => {
+      // Look for table rows with transaction data
+      const rows = document.querySelectorAll('tr, .row, [class*="row"]');
+      const transactions = [];
+      
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const text = row.textContent;
+        
+        // Look for dollar amounts in the row
+        const matches = text.match(/\$([\d,]+\.\d+)/g);
+        if (matches && matches.length > 0) {
+          // Extract the first dollar amount as the transaction amount
+          const amount = parseFloat(matches[0].replace(/[$,]/g, ''));
+          if (amount > 0) {
+            transactions.push(amount);
+          }
+        }
+      }
+      
+      return transactions;
+    });
+    
+    if (transactionData.length > 0) {
+      const totalSales = transactionData.reduce((sum, amount) => sum + amount, 0);
+      console.log(`💰 Calculated Net Sales from page transactions: $${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${transactionData.length} transactions)`);
+      return totalSales;
+    }
+    
+    return 0;
+    
+  } catch (error) {
+    console.error(`CSV fallback failed:`, error.message);
+    return 0;
+  }
+}
+
+async function calculateNetSalesFromCSV(csvPath) {
+  try {
+    const csvContent = fs.readFileSync(csvPath, 'utf8');
+    const lines = csvContent.split('\n');
+    
+    console.log(`📊 Processing CSV with ${lines.length} lines...`);
+    
+    let totalSales = 0;
+    let transactionCount = 0;
+    
+    for (const line of lines) {
+      // Skip header lines
+      if (line.toLowerCase().includes('header') || line.toLowerCase().includes('total') || line.toLowerCase().includes('summary')) {
+        continue;
+      }
+      
+      // Look for dollar amounts in the line
+      const matches = line.match(/\$([\d,]+\.\d+)/g);
+      if (matches && matches.length > 0) {
+        // Take the first dollar amount as the transaction amount
+        const amount = parseFloat(matches[0].replace(/[$,]/g, ''));
+        if (amount > 0) {
+          totalSales += amount;
+          transactionCount++;
+        }
+      }
+    }
+    
+    console.log(`📊 Found ${transactionCount} transactions totaling $${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    
+    return totalSales;
+    
+  } catch (error) {
+    console.error(`Error processing CSV:`, error.message);
+    return 0;
   }
 }
 
