@@ -229,85 +229,17 @@ async function scrapeStoreData(store) {
     
     console.log(`🔍 Raw sales text found: "${salesText}"`);
     
-    // If we got $0.00, try a different approach - wait longer and try again
-    if (salesText === '$0.00') {
-      console.log(`⚠️ Got $0.00, trying alternative approach...`);
-      
-      // Wait a bit longer and try again
-      await page.waitForTimeout(5000);
-      
-      const retrySalesText = await page.evaluate(() => {
-        const summaryItems = document.querySelectorAll('.summary-item');
-        console.log('Retry - Found summary items:', summaryItems.length);
-        
-        for (let i = 0; i < summaryItems.length; i++) {
-          const item = summaryItems[i];
-          const text = item.textContent;
-          console.log(`Retry - Item ${i + 1}: "${text}"`);
-          
-          if (text && text.includes('Net Sales')) {
-            console.log(`Retry - Found Net Sales in item ${i + 1}`);
-            
-            // Try to get all dollar elements in this item
-            const allDollarElements = item.querySelectorAll('.sc-ifAKCX.hDwfsa');
-            console.log(`Retry - Found ${allDollarElements.length} dollar elements`);
-            
-            for (let j = 0; j < allDollarElements.length; j++) {
-              const amount = allDollarElements[j].textContent;
-              console.log(`Retry - Dollar element ${j + 1}: "${amount}"`);
-              
-              if (amount && amount !== '$0.00') {
-                console.log(`Retry - Using non-zero amount: "${amount}"`);
-                return amount;
-              }
-            }
-            
-            // If all dollar elements are $0.00, try regex on full text
-            const fullText = item.textContent;
-            console.log('Retry - Full Net Sales item text:', fullText);
-            
-            const match = fullText.match(/\$([\d,]+\.\d+)/);
-            if (match) {
-              console.log('Retry - Regex match found:', match[0]);
-              return match[0];
-            }
-          }
-        }
-        return null;
-      });
-      
-      console.log(`🔍 Retry sales text found: "${retrySalesText}"`);
-      
-      if (retrySalesText && retrySalesText !== '$0.00') {
-        salesText = retrySalesText;
-      }
-    }
-    
     if (salesText) {
       const match = salesText.match(/\$([\d,]+\.\d+)/);
       if (match) {
         const cleanNumber = match[1].replace(/,/g, '');
         const salesAmount = parseFloat(cleanNumber);
-        
-        // Check if this is a final collection and stores are closed
-        const isFinalCollection = process.env.COLLECTION_TIME === "final";
-        const currentTime = new Date();
-        const isAfterClose = currentTime.getHours() >= 21; // 9 PM
-        
-        if (salesAmount === 0 && isFinalCollection && isAfterClose) {
-          console.log(`⚠️ Stores are closed (after 9:00 PM) - sales data may be reset to zero`);
-          console.log(`📊 This is expected behavior for final collection after store closing`);
-          
-          // For final collection after store closing, we might want to use the last known sales data
-          // or accept that the data is zero because stores are closed
-          console.log(`✅ Accepting $0.00 as valid for closed stores`);
-          return 0;
-        }
-        
+        console.log(`💰 Sales amount: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
         return salesAmount;
       }
     }
     
+    console.log(`❌ No sales amount found`);
     return 0;
     
   } catch (error) {
