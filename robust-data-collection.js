@@ -269,7 +269,49 @@ async function downloadCSVAndCalculate(store, page) {
   try {
     console.log(`📊 Step 2: Looking for CSV download options...`);
     
-    // Look for any export or download buttons
+    // Look for the "more-btn" (three dots menu) as shown in the recording
+    const moreButton = await page.locator('#more-btn');
+    if (await moreButton.isVisible()) {
+      console.log(`📊 Found more button, clicking to open dropdown...`);
+      await moreButton.click();
+      
+      // Wait for dropdown to appear
+      await page.waitForTimeout(1000);
+      
+      // Look for "CSV Export" option as shown in the recording
+      const csvExportOption = await page.locator('text/CSV Export');
+      if (await csvExportOption.isVisible()) {
+        console.log(`📊 Found CSV Export option, clicking to download...`);
+        await csvExportOption.click();
+        
+        // Wait for download to start
+        const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
+        
+        try {
+          const download = await downloadPromise;
+          const downloadPath = path.join(__dirname, `${store.name}-transactions.csv`);
+          await download.saveAs(downloadPath);
+          
+          console.log(`📥 CSV downloaded: ${downloadPath}`);
+          
+          // Process the CSV to calculate Net Sales from transactions
+          const netSales = await calculateNetSalesFromCSV(downloadPath);
+          
+          console.log(`💰 Calculated Net Sales from CSV: $${netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+          
+          return netSales;
+          
+        } catch (downloadError) {
+          console.log(`❌ CSV download failed:`, downloadError.message);
+        }
+      } else {
+        console.log(`❌ CSV Export option not found in dropdown`);
+      }
+    } else {
+      console.log(`❌ More button (#more-btn) not found`);
+    }
+    
+    // Fallback: Look for any export or download buttons
     const exportButtons = await page.evaluate(() => {
       const allButtons = document.querySelectorAll('button');
       const exportInfo = [];
