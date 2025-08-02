@@ -160,6 +160,17 @@ async function scrapeStoreData(store) {
     // Wait for date to be set and page to update
     await page.waitForTimeout(3000);
     
+    // Generate the report first
+    console.log(`📊 Step 1: Clicking "Generate Report"...`);
+    await page.click('button:has-text("Generate Report")');
+    
+    // Wait for the report to generate and summary items to appear
+    console.log(`⏳ Waiting for report to generate...`);
+    await page.waitForTimeout(5000);
+    
+    // Wait for summary items to be present after report generation
+    await page.waitForSelector('.summary-item', { timeout: 15000 });
+    
     // Use the same logic for both MID-DAY and FINAL collections
     // since the 4:20 PM (MID-DAY) works perfectly on GitHub
     const isFinalCollection = process.env.COLLECTION_TIME === "final";
@@ -168,7 +179,7 @@ async function scrapeStoreData(store) {
       // Use the same timing as MID-DAY collection since it works perfectly
     }
     
-    console.log(`🔍 Page loaded, starting sales extraction...`);
+    console.log(`🔍 Report generated, starting sales extraction...`);
     
     // Extract sales data - look for Net Sales specifically
     const salesText = await page.evaluate(() => {
