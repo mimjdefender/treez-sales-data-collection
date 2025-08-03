@@ -279,7 +279,7 @@ async function downloadCSVAndCalculate(store, page) {
       await page.waitForTimeout(1000);
       
       // Look for "CSV Export" option as shown in the recording
-      const csvExportOption = await page.locator('text/CSV Export');
+      const csvExportOption = await page.locator(':has-text("CSV Export")');
       if (await csvExportOption.isVisible()) {
         console.log(`📊 Found CSV Export option, clicking to download...`);
         await csvExportOption.click();
