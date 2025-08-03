@@ -152,6 +152,21 @@ async function scrapeStoreData(store) {
         dateInput.value = dateString;
         dateInput.dispatchEvent(new Event('change', { bubbles: true }));
         console.log(`Date set to: ${dateString}`);
+        
+        // For FINAL collection, try to set a time range for the entire day
+        const isFinalCollection = process.env.COLLECTION_TIME === "final";
+        if (isFinalCollection) {
+          console.log(`⏰ FINAL collection: Setting time range for entire day`);
+          // Look for time range inputs and set them to cover the entire day
+          const timeInputs = document.querySelectorAll('input[type="time"]');
+          if (timeInputs.length >= 2) {
+            timeInputs[0].value = '00:00'; // Start of day
+            timeInputs[1].value = '23:59'; // End of day
+            timeInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+            timeInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+            console.log(`Time range set: 00:00 - 23:59`);
+          }
+        }
       } else {
         console.log('No date input found, continuing with default date');
       }
