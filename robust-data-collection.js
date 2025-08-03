@@ -409,13 +409,23 @@ async function calculateNetSalesFromCSV(csvPath) {
     const lines = csvContent.split('\n');
     
     console.log(`📊 Processing CSV with ${lines.length} lines...`);
+    console.log(`📄 CSV content preview (first 3 lines):`);
+    lines.slice(0, 3).forEach((line, index) => {
+      console.log(`  Line ${index + 1}: "${line}"`);
+    });
     
     let totalSales = 0;
     let transactionCount = 0;
     
     for (const line of lines) {
+      // Skip empty lines
+      if (!line.trim()) {
+        continue;
+      }
+      
       // Skip header lines
       if (line.toLowerCase().includes('header') || line.toLowerCase().includes('total') || line.toLowerCase().includes('summary')) {
+        console.log(`📄 Skipping header line: "${line}"`);
         continue;
       }
       
@@ -427,7 +437,10 @@ async function calculateNetSalesFromCSV(csvPath) {
         if (amount > 0) {
           totalSales += amount;
           transactionCount++;
+          console.log(`💰 Found transaction: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
         }
+      } else {
+        console.log(`📄 No dollar amounts found in line: "${line}"`);
       }
     }
     
