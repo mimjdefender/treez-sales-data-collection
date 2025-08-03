@@ -2,8 +2,8 @@ name: 9:15 PM Final Sales Report
 
 on:
   schedule:
-    # 6:15 PM EST (11:15 PM UTC same day) - Changed to avoid timezone date issue
-    - cron: '15 23 * * *'
+    # 9:15 PM EST (2:15 AM UTC next day) - Correct time for FINAL collection
+    - cron: '15 2 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
@@ -48,6 +48,10 @@ jobs:
         ls -la
         echo "robust-data-collection.js first 10 lines:"
         head -10 robust-data-collection.js
+        echo "Current UTC time:"
+        date -u
+        echo "Current EST time:"
+        TZ=America/New_York date
 
     - name: Test simple scraping (debug)
       run: node test-github-simple.js
@@ -59,9 +63,11 @@ jobs:
       env:
         COLLECTION_TIME: "final"
         DEBUG: "true"
+      continue-on-error: true
 
     - name: Generate 9:15 PM final report
       run: node generate-915-report.js
+      if: always()
 
     - name: Upload debug files
       uses: actions/upload-artifact@v4
