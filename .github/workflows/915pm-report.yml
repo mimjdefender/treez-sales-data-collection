@@ -15,6 +15,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -39,6 +40,15 @@ jobs:
     - name: Install Playwright browsers
       run: npx playwright install chromium
 
+    - name: Debug - Show current commit and files
+      run: |
+        echo "Current git commit:"
+        git log --oneline -1
+        echo "Files in directory:"
+        ls -la
+        echo "robust-data-collection.js first 10 lines:"
+        head -10 robust-data-collection.js
+
     - name: Test simple scraping (debug)
       run: node test-github-simple.js
       env:
@@ -48,6 +58,7 @@ jobs:
       run: node robust-data-collection.js
       env:
         COLLECTION_TIME: "final"
+        DEBUG: "true"
 
     - name: Generate 9:15 PM final report
       run: node generate-915-report.js
