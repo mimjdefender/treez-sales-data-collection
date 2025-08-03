@@ -444,10 +444,31 @@ async function calculateNetSalesFromCSV(csvPath) {
 // Helper function to get the target date for date input
 function getTargetDate() {
   const currentDate = new Date();
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth() + 1; // getMonth() is 0-indexed
-  const day = currentDate.getDate();
-  return { year, month, day };
+  
+  // Check if this is FINAL collection (9:15 PM EST = 2:15 AM UTC next day)
+  const isFinalCollection = process.env.COLLECTION_TIME === "final";
+  
+  if (isFinalCollection) {
+    // For FINAL collection, we want the EST date (current UTC date - 1 day)
+    // because 9:15 PM EST is 2:15 AM UTC the next day
+    const estDate = new Date(currentDate);
+    estDate.setUTCDate(estDate.getUTCDate() - 1);
+    
+    const year = estDate.getUTCFullYear();
+    const month = estDate.getUTCMonth() + 1; // getMonth() is 0-indexed
+    const day = estDate.getUTCDate();
+    
+    console.log(`📅 FINAL collection: Using EST date (UTC date - 1 day)`);
+    return { year, month, day };
+  } else {
+    // For MID-DAY collection, use current UTC date
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1; // getMonth() is 0-indexed
+    const day = currentDate.getDate();
+    
+    console.log(`📅 MID-DAY collection: Using current UTC date`);
+    return { year, month, day };
+  }
 }
 
 // Run the collection
