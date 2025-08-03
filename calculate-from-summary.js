@@ -58,11 +58,11 @@ function getTargetDate() {
   }
 }
 
-async function robustDataCollectionCSV() {
+async function calculateFromSummary() {
   const isFinalCollection = process.env.COLLECTION_TIME === "final";
   const targetDate = getTargetDate();
   
-  console.log(`🚀 Starting ${isFinalCollection ? 'FINAL' : 'MID-DAY'} data collection using CSV method...`);
+  console.log(`🚀 Starting ${isFinalCollection ? 'FINAL' : 'MID-DAY'} data collection using summary calculation...`);
   console.log(`⏰ Collection time: ${isFinalCollection ? '9:15 PM (stores closed at 9:00 PM)' : '4:20 PM (mid-day update)'}`);
   console.log(`📅 Target date: ${targetDate.month}/${targetDate.day}/${targetDate.year}`);
   
@@ -73,19 +73,20 @@ async function robustDataCollectionCSV() {
     console.log(`\n📊 Processing ${store.name}...`);
     
     try {
-      // Try to get data via CSV
-      const salesAmount = await getStoreDataViaCSV(store, targetDate);
+      // Get data from summary items
+      const summaryData = await getStoreSummaryData(store, targetDate);
       
-      if (salesAmount > 0) {
-        results[store.name] = salesAmount;
+      if (summaryData.netSales > 0) {
+        results[store.name] = summaryData.netSales;
         successCount++;
-        console.log(`✅ ${store.name}: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        console.log(`✅ ${store.name}: $${summaryData.netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        console.log(`📊 Summary: Gross $${summaryData.grossSales}, Discounts $${summaryData.discounts}, Returns $${summaryData.returns}, Net $${summaryData.netSales}`);
       } else {
         throw new Error(`Failed to get data for ${store.name} - no sales amount found`);
       }
       
       // Create CSV file
-      const csvContent = `Store,Sales Amount,Timestamp\n${store.name},${results[store.name]},${new Date().toISOString()}`;
+      const csvContent = `Store,Gross Sales,Discounts,Returns,Net Sales,Timestamp\n${store.name},${summaryData.grossSales},${summaryData.discounts},${summaryData.returns},${summaryData.netSales},${new Date().toISOString()}`;
       const filePath = path.join(__dirname, `treez-${store.name}.csv`);
       fs.writeFileSync(filePath, csvContent);
       console.log(`📄 CSV created: ${filePath}`);
@@ -104,7 +105,7 @@ async function robustDataCollectionCSV() {
   return results;
 }
 
-async function getStoreDataViaCSV(store, targetDate) {
+async function getStoreSummaryData(store, targetDate) {
   const browser = await chromium.launch({ 
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
@@ -147,7 +148,6 @@ async function getStoreDataViaCSV(store, targetDate) {
     
     // Set the date on the page
     await page.evaluate((date) => {
-      // Find and set the date input field
       const dateInput = document.querySelector('input[type="date"]');
       if (dateInput) {
         const dateString = `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
@@ -164,118 +164,78 @@ async function getStoreDataViaCSV(store, targetDate) {
     
     console.log(`📊 Step 1: Clicking "Generate Report"...`);
     
-    // Step 1: Click the generate report button
+    // Click the generate report button
     await page.click('button:has-text("Generate Report")');
     
     // Wait for the report to generate
     console.log(`⏳ Waiting for report to generate...`);
     await page.waitForTimeout(5000);
     
-    console.log(`📊 Step 2: Looking for dropdown menu...`);
+    // Wait for summary items to be present
+    await page.waitForSelector('.summary-item', { timeout: 15000 });
     
-    // Step 2: Find and click the dropdown menu (the one with "Print Window" text)
-    const dropdownButton = await page.waitForSelector('.ui.scrolling.dropdown.icon', { timeout: 10000 });
-    await dropdownButton.click();
+    console.log(`🔍 Report generated, extracting summary data...`);
     
-    console.log(`📊 Step 3: Looking for "Download CSV" option...`);
+    // Extract all summary data
+    const summaryData = await page.evaluate(() => {
+      const summaryItems = document.querySelectorAll('.summary-item');
+      const data = {
+        grossSales: 0,
+        discounts: 0,
+        returns: 0,
+        netSales: 0,
+        taxes: 0,
+        grossReceipts: 0,
+        cost: 0,
+        grossIncome: 0
+      };
+      
+      for (let i = 0; i < summaryItems.length; i++) {
+        const item = summaryItems[i];
+        const text = item.textContent;
+        
+        // Extract amounts using regex
+        const match = text.match(/\$([\d,]+\.\d+)/);
+        if (match) {
+          const amount = parseFloat(match[1].replace(/,/g, ''));
+          
+          if (text.includes('Gross Sales')) {
+            data.grossSales = amount;
+          } else if (text.includes('Discounts')) {
+            data.discounts = amount;
+          } else if (text.includes('Returns')) {
+            data.returns = amount;
+          } else if (text.includes('Net Sales')) {
+            data.netSales = amount;
+          } else if (text.includes('Taxes')) {
+            data.taxes = amount;
+          } else if (text.includes('Gross Receipts')) {
+            data.grossReceipts = amount;
+          } else if (text.includes('Cost')) {
+            data.cost = amount;
+          } else if (text.includes('Gross Income')) {
+            data.grossIncome = amount;
+          }
+        }
+      }
+      
+      return data;
+    });
     
-    // Step 3: Click "Download CSV" from the dropdown
-    // Try different possible selectors for the download option
-    const downloadCSVOption = await page.waitForSelector('div.item:has-text("Download"), div:has-text("CSV"), [role="menuitem"]:has-text("Download")', { timeout: 10000 });
-    await downloadCSVOption.click();
+    console.log(`📊 Summary data extracted:`, summaryData);
     
-    // Wait for the download to start
-    console.log(`📥 Waiting for CSV download...`);
-    const downloadPromise = page.waitForEvent('download');
-    
-    // Wait for the download to complete
-    const download = await downloadPromise;
-    
-    // Save the file
-    const downloadPath = path.join(__dirname, `${store.name}-report.csv`);
-    await download.saveAs(downloadPath);
-    
-    console.log(`📥 CSV downloaded: ${downloadPath}`);
-    
-    // Process the CSV to calculate Net Sales
-    const netSales = await processCSVForNetSales(downloadPath);
-    
-    console.log(`💰 Calculated Net Sales: $${netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-    
-    return netSales;
+    return summaryData;
     
   } catch (error) {
-    console.error(`CSV method failed for ${store.name}:`, error.message);
-    return 0;
+    console.error(`Summary extraction failed for ${store.name}:`, error.message);
+    return { grossSales: 0, discounts: 0, returns: 0, netSales: 0, taxes: 0, grossReceipts: 0, cost: 0, grossIncome: 0 };
   } finally {
     await browser.close();
   }
 }
 
-async function processCSVForNetSales(csvPath) {
-  try {
-    const csvContent = fs.readFileSync(csvPath, 'utf8');
-    const lines = csvContent.split('\n');
-    
-    console.log(`📊 Processing CSV with ${lines.length} lines...`);
-    
-    let netSales = 0;
-    let foundNetSales = false;
-    
-    for (const line of lines) {
-      if (line.includes('Net Sales') || line.includes('net sales')) {
-        // Extract the amount from the line
-        const match = line.match(/[\$]?([\d,]+\.\d+)/);
-        if (match) {
-          netSales = parseFloat(match[1].replace(/,/g, ''));
-          foundNetSales = true;
-          console.log(`✅ Found Net Sales in CSV: $${netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-          break;
-        }
-      }
-    }
-    
-    if (!foundNetSales) {
-      console.log(`⚠️ Net Sales not found in CSV, calculating from transactions...`);
-      // If Net Sales not found, calculate from transaction data
-      netSales = calculateNetSalesFromTransactions(lines);
-    }
-    
-    return netSales;
-    
-  } catch (error) {
-    console.error(`Error processing CSV:`, error.message);
-    return 0;
-  }
-}
-
-function calculateNetSalesFromTransactions(lines) {
-  let totalSales = 0;
-  let totalReturns = 0;
-  
-  for (const line of lines) {
-    // Look for transaction amounts
-    const salesMatch = line.match(/[\$]?([\d,]+\.\d+)/);
-    if (salesMatch) {
-      const amount = parseFloat(salesMatch[1].replace(/,/g, ''));
-      
-      // Determine if it's a sale or return based on context
-      if (line.toLowerCase().includes('return') || line.toLowerCase().includes('refund')) {
-        totalReturns += amount;
-      } else if (line.toLowerCase().includes('sale') || line.toLowerCase().includes('transaction')) {
-        totalSales += amount;
-      }
-    }
-  }
-  
-  const netSales = totalSales - totalReturns;
-  console.log(`📊 Calculated from transactions: Sales $${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, Returns $${totalReturns.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, Net $${netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-  
-  return netSales;
-}
-
 // Run the collection
-robustDataCollectionCSV().then(() => {
+calculateFromSummary().then(() => {
   console.log('\n✅ Data collection completed!');
 }).catch(error => {
   console.error('❌ Data collection failed:', error.message);
