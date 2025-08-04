@@ -42,15 +42,7 @@ const stores = [
   }
 ];
 
-// Fallback data (use if scraping fails)
-const fallbackData = {
-  'cheboygan': 4925.41,
-  'lowell': 1657.31,
-  'alpena': 1196.88,
-  'gaylord': 1549.58,
-  'rc': 2394.62,
-  'manistee': 2822.05
-};
+// No hardcoded fallback data - only use actual CSV data
 
 async function robustDataCollection() {
   const isFinalCollection = process.env.COLLECTION_TIME === "final";
@@ -72,10 +64,9 @@ async function robustDataCollection() {
         successCount++;
         console.log(`✅ ${store.name}: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       } else {
-        // Use fallback data instead of failing completely
-        console.log(`⚠️ ${store.name}: No sales data found, using fallback data`);
-        results[store.name] = fallbackData[store.name] || 0;
-        console.log(`📊 ${store.name}: Using fallback amount $${fallbackData[store.name].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        // No hardcoded fallback - only use actual data
+        console.log(`⚠️ ${store.name}: No sales data found, skipping store`);
+        results[store.name] = 0;
       }
       
       // Create CSV file
@@ -87,10 +78,9 @@ async function robustDataCollection() {
     } catch (error) {
       console.error(`❌ Error processing ${store.name}:`, error.message);
       
-      // Use fallback data instead of failing completely
-      console.log(`⚠️ ${store.name}: Processing failed, using fallback data`);
-      results[store.name] = fallbackData[store.name] || 0;
-      console.log(`📊 ${store.name}: Using fallback amount $${fallbackData[store.name].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      // No hardcoded fallback - only use actual data
+      console.log(`⚠️ ${store.name}: Processing failed, skipping store`);
+      results[store.name] = 0;
     }
   }
 
@@ -414,6 +404,7 @@ async function downloadCSVAndCalculate(store, page) {
       return totalSales;
     }
     
+    console.log(`📊 No transaction data found in page, returning 0`);
     return 0;
     
   } catch (error) {
