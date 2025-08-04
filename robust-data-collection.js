@@ -545,16 +545,18 @@ function getTargetDate() {
   const isFinalCollection = process.env.COLLECTION_TIME === "final";
   
   if (isFinalCollection) {
-    // For FINAL collection, we want the EST date (current UTC date - 1 day)
-    // because 9:15 PM EST is 2:15 AM UTC the next day
-    const estDate = new Date(currentDate);
-    estDate.setUTCDate(estDate.getUTCDate() - 1);
+    // For FINAL collection, we want TODAY's date (the day that just ended at 9:00 PM)
+    // The stores close at 9:00 PM EST, so we want the current EST date
+    const estDate = new Date();
+    // Convert to EST timezone
+    const estTimeString = estDate.toLocaleString('en-US', { timeZone: 'America/New_York' });
+    const estDateParts = new Date(estTimeString);
     
-    const year = estDate.getUTCFullYear();
-    const month = estDate.getUTCMonth() + 1; // getMonth() is 0-indexed
-    const day = estDate.getUTCDate();
+    const year = estDateParts.getFullYear();
+    const month = estDateParts.getMonth() + 1; // getMonth() is 0-indexed
+    const day = estDateParts.getDate();
     
-    console.log(`📅 FINAL collection: Using EST date (UTC date - 1 day)`);
+    console.log(`📅 FINAL collection: Using current EST date (stores closed at 9:00 PM)`);
     return { year, month, day };
   } else {
     // For MID-DAY collection, use current UTC date
