@@ -146,6 +146,7 @@ async function scrapeStoreData(store) {
       const dateInput = document.querySelector('input[type="date"]');
       if (dateInput) {
         const dateString = `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
+        console.log(`📅 Date string being sent to Treez: "${dateString}"`);
         dateInput.value = dateString;
         dateInput.dispatchEvent(new Event('change', { bubbles: true }));
         console.log(`Date set to: ${dateString}`);
