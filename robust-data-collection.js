@@ -424,8 +424,9 @@ async function calculateNetSalesFromCSV(csvPath) {
       console.log(`  Line ${index + 1}: "${line}"`);
     });
     
-    let totalSales = 0;
-    let transactionCount = 0;
+    // Group by transaction ID to avoid double-counting line items
+    const transactionTotals = new Map();
+    let lineItemCount = 0;
     
     for (const line of lines) {
       // Skip empty lines
@@ -443,21 +444,27 @@ async function calculateNetSalesFromCSV(csvPath) {
       const columns = line.split(',');
       console.log(`📄 Processing line with ${columns.length} columns`);
       
-      // Look for the "Net Sales" column (index 33 based on the header)
+      // Look for the "Net Sales" column (index 33) and "Ticket ID" column (index 6)
       // Header: "Date Open,Time Opened,Date Last Modified,Time Last Modified,Date Closed,Time Closed,Ticket ID,Ticket Line ID,Ticket Type,Ticket Notes,Ticket Created User,Ticket Line Created User,Type,Product Type,Subtype,Brand,Product Name,Classification,Tier,Invoice ID,Revenue Source,State Tracking ID,Batch,Location,Receiving License,Distributor,Qty,Total Weight,Price/Unit,Amount,Unit of Measure,Gross Sales,Discounts,Returns,Net Sales,Taxes,Dynamic Tax Label,Gross Receipts,Cost,Gross Income,Avg Product Margin,Customer Name,Customer ID,MMID,Document ID,DOB,Gender,Age,City,State/Province,Country,Address,Zip Code,Customer Group(s),Customer Type,Customer Source,Email,Phone,Attributes,Product Barcodes,Inventory Barcodes,Total Mg THC,Total Mg CBD,Size,Extraction Method,External ID,Caregiver ID,Caregiver Name,Inventory Type,Cashier,Register #"
       
       if (columns.length >= 34) { // Ensure we have enough columns
+        const ticketId = columns[6]; // Ticket ID is at index 6
         const netSalesValue = columns[33]; // Net Sales is at index 33
-        console.log(`📄 Net Sales column value: "${netSalesValue}"`);
+        
+        console.log(`📄 Ticket ID: "${ticketId}", Net Sales: "${netSalesValue}"`);
         
         // Parse the net sales value (remove quotes if present)
         const cleanValue = netSalesValue.replace(/"/g, '').trim();
-        if (cleanValue && cleanValue !== 'Net Sales' && cleanValue !== '') {
+        const cleanTicketId = ticketId.replace(/"/g, '').trim();
+        
+        if (cleanValue && cleanValue !== 'Net Sales' && cleanValue !== '' && cleanTicketId && cleanTicketId !== 'Ticket ID') {
           const amount = parseFloat(cleanValue);
           if (!isNaN(amount) && amount > 0) {
-            totalSales += amount;
-            transactionCount++;
-            console.log(`💰 Found transaction: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+            // Add to transaction total
+            const currentTotal = transactionTotals.get(cleanTicketId) || 0;
+            transactionTotals.set(cleanTicketId, currentTotal + amount);
+            lineItemCount++;
+            console.log(`💰 Found line item: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} for transaction ${cleanTicketId}`);
           } else {
             console.log(`📄 Invalid or zero amount: "${cleanValue}"`);
           }
@@ -469,7 +476,17 @@ async function calculateNetSalesFromCSV(csvPath) {
       }
     }
     
-    console.log(`📊 Found ${transactionCount} transactions totaling $${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    // Calculate total sales from unique transactions
+    let totalSales = 0;
+    let transactionCount = 0;
+    
+    for (const [ticketId, transactionTotal] of transactionTotals) {
+      totalSales += transactionTotal;
+      transactionCount++;
+      console.log(`📊 Transaction ${ticketId}: $${transactionTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    }
+    
+    console.log(`📊 Found ${transactionCount} unique transactions (${lineItemCount} line items) totaling $${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
     
     return totalSales;
     
