@@ -137,6 +137,9 @@ async function scrapeStoreData(store) {
     // Set the date on the page to ensure we get the correct data
     const targetDate = getTargetDate();
     console.log(`📅 Setting date to ${targetDate.month}/${targetDate.day}/${targetDate.year}...`);
+    console.log(`📅 Target date object:`, targetDate);
+    console.log(`📅 Current UTC time:`, new Date().toISOString());
+    console.log(`📅 Current EST time:`, new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
     
     await page.evaluate((date) => {
       // Find and set the date input field
@@ -147,17 +150,24 @@ async function scrapeStoreData(store) {
         dateInput.dispatchEvent(new Event('change', { bubbles: true }));
         console.log(`Date set to: ${dateString}`);
         
+        // Debug: Check what date is actually set
+        console.log(`📅 Date input value after setting: ${dateInput.value}`);
+        
         // For FINAL collection, try to set a time range for the entire day
         // Note: process.env is not available in browser context, so we'll always try to set time range
         console.log(`⏰ Attempting to set time range for entire day`);
         // Look for time range inputs and set them to cover the entire day
         const timeInputs = document.querySelectorAll('input[type="time"]');
+        console.log(`📅 Found ${timeInputs.length} time inputs`);
+        
         if (timeInputs.length >= 2) {
           timeInputs[0].value = '00:00'; // Start of day
           timeInputs[1].value = '23:59'; // End of day
           timeInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
           timeInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
           console.log(`Time range set: 00:00 - 23:59`);
+          console.log(`📅 Time input 1 value: ${timeInputs[0].value}`);
+          console.log(`📅 Time input 2 value: ${timeInputs[1].value}`);
         } else {
           console.log(`No time range inputs found, continuing without time range`);
         }
@@ -175,10 +185,31 @@ async function scrapeStoreData(store) {
     
     // Wait for the report to generate and summary items to appear
     console.log(`⏳ Waiting for report to generate...`);
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(10000); // Wait longer for full data
     
     // Wait for summary items to be present after report generation
     await page.waitForSelector('.summary-item', { timeout: 15000 });
+    
+    // Debug: Check what the page shows us
+    console.log(`📊 Checking page content after report generation...`);
+    const pageContent = await page.evaluate(() => {
+      const summaryItems = document.querySelectorAll('.summary-item');
+      const items = [];
+      for (let i = 0; i < summaryItems.length; i++) {
+        items.push(summaryItems[i].textContent);
+      }
+      return {
+        summaryItems: items,
+        pageTitle: document.title,
+        url: window.location.href
+      };
+    });
+    console.log(`📊 Page title: ${pageContent.pageTitle}`);
+    console.log(`📊 Page URL: ${pageContent.url}`);
+    console.log(`📊 Summary items found: ${pageContent.summaryItems.length}`);
+    pageContent.summaryItems.forEach((item, index) => {
+      console.log(`📊 Summary item ${index + 1}: "${item}"`);
+    });
     
     // Use the same logic for both MID-DAY and FINAL collections
     // since the 4:20 PM (MID-DAY) works perfectly on GitHub
@@ -423,6 +454,16 @@ async function calculateNetSalesFromCSV(csvPath) {
     lines.slice(0, 3).forEach((line, index) => {
       console.log(`  Line ${index + 1}: "${line}"`);
     });
+    
+    // Debug: Show all lines to see what we're actually getting
+    console.log(`📄 Full CSV content (first 10 lines):`);
+    lines.slice(0, 10).forEach((line, index) => {
+      console.log(`  Line ${index + 1}: "${line}"`);
+    });
+    
+    // Check if we have any non-empty data lines
+    const dataLines = lines.filter(line => line.trim() && !line.toLowerCase().includes('header') && !line.toLowerCase().includes('total') && !line.toLowerCase().includes('summary'));
+    console.log(`📊 Found ${dataLines.length} data lines (excluding headers)`);
     
     // Group by transaction ID to avoid double-counting line items
     const transactionTotals = new Map();
