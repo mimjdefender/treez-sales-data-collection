@@ -545,18 +545,17 @@ function getTargetDate() {
   const isFinalCollection = process.env.COLLECTION_TIME === "final";
   
   if (isFinalCollection) {
-    // For FINAL collection, we want TODAY's date (the day that just ended at 9:00 PM)
-    // The stores close at 9:00 PM EST, so we want the current EST date
-    const estDate = new Date();
-    // Convert to EST timezone
-    const estTimeString = estDate.toLocaleString('en-US', { timeZone: 'America/New_York' });
-    const estDateParts = new Date(estTimeString);
+    // For FINAL collection, we want the date that just ended at 9:00 PM EST
+    // When GitHub Actions runs at 2:15 AM UTC (9:15 PM EST), we want the previous UTC day
+    // because 9:15 PM EST is 2:15 AM UTC the next day
+    const targetDate = new Date(currentDate);
+    targetDate.setUTCDate(targetDate.getUTCDate() - 1);
     
-    const year = estDateParts.getFullYear();
-    const month = estDateParts.getMonth() + 1; // getMonth() is 0-indexed
-    const day = estDateParts.getDate();
+    const year = targetDate.getUTCFullYear();
+    const month = targetDate.getUTCMonth() + 1; // getMonth() is 0-indexed
+    const day = targetDate.getUTCDate();
     
-    console.log(`📅 FINAL collection: Using current EST date (stores closed at 9:00 PM)`);
+    console.log(`📅 FINAL collection: Using previous UTC date (stores closed at 9:00 PM EST)`);
     return { year, month, day };
   } else {
     // For MID-DAY collection, use current UTC date
