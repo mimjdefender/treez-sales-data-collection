@@ -238,22 +238,18 @@ async function scrapeStoreData(store) {
     
     console.log(`🔍 Raw sales text found: "${salesText}"`);
     
+    let pageSalesAmount = 0;
     if (salesText) {
       const match = salesText.match(/\$([\d,]+\.\d+)/);
       if (match) {
         const cleanNumber = match[1].replace(/,/g, '');
-        const salesAmount = parseFloat(cleanNumber);
-        console.log(`💰 Sales amount: $${salesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-        
-        // If we got a non-zero amount, return it
-        if (salesAmount > 0) {
-          return salesAmount;
-        }
+        pageSalesAmount = parseFloat(cleanNumber);
+        console.log(`💰 Page sales amount: $${pageSalesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       }
     }
     
-    // If we got here, we either got $0.00 or no sales amount found
-    console.log(`⚠️ Got $0.00 or no sales amount, trying CSV fallback...`);
+    // Always try to download CSV for more accurate data
+    console.log(`📊 Always downloading CSV for accurate transaction data...`);
     
     // Try to download CSV and calculate from transactions
     const csvSalesAmount = await downloadCSVAndCalculate(store, page);
@@ -261,6 +257,10 @@ async function scrapeStoreData(store) {
     if (csvSalesAmount > 0) {
       console.log(`✅ CSV calculation successful: $${csvSalesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       return csvSalesAmount;
+    } else if (pageSalesAmount > 0) {
+      // If CSV failed but we have page data, use that
+      console.log(`⚠️ CSV failed, using page data: $${pageSalesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      return pageSalesAmount;
     }
     
     console.log(`❌ No sales amount found`);
@@ -439,18 +439,33 @@ async function calculateNetSalesFromCSV(csvPath) {
         continue;
       }
       
-      // Look for dollar amounts in the line
-      const matches = line.match(/\$([\d,]+\.\d+)/g);
-      if (matches && matches.length > 0) {
-        // Take the first dollar amount as the transaction amount
-        const amount = parseFloat(matches[0].replace(/[$,]/g, ''));
-        if (amount > 0) {
-          totalSales += amount;
-          transactionCount++;
-          console.log(`💰 Found transaction: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      // Parse CSV line by splitting on commas
+      const columns = line.split(',');
+      console.log(`📄 Processing line with ${columns.length} columns`);
+      
+      // Look for the "Net Sales" column (index 33 based on the header)
+      // Header: "Date Open,Time Opened,Date Last Modified,Time Last Modified,Date Closed,Time Closed,Ticket ID,Ticket Line ID,Ticket Type,Ticket Notes,Ticket Created User,Ticket Line Created User,Type,Product Type,Subtype,Brand,Product Name,Classification,Tier,Invoice ID,Revenue Source,State Tracking ID,Batch,Location,Receiving License,Distributor,Qty,Total Weight,Price/Unit,Amount,Unit of Measure,Gross Sales,Discounts,Returns,Net Sales,Taxes,Dynamic Tax Label,Gross Receipts,Cost,Gross Income,Avg Product Margin,Customer Name,Customer ID,MMID,Document ID,DOB,Gender,Age,City,State/Province,Country,Address,Zip Code,Customer Group(s),Customer Type,Customer Source,Email,Phone,Attributes,Product Barcodes,Inventory Barcodes,Total Mg THC,Total Mg CBD,Size,Extraction Method,External ID,Caregiver ID,Caregiver Name,Inventory Type,Cashier,Register #"
+      
+      if (columns.length >= 34) { // Ensure we have enough columns
+        const netSalesValue = columns[33]; // Net Sales is at index 33
+        console.log(`📄 Net Sales column value: "${netSalesValue}"`);
+        
+        // Parse the net sales value (remove quotes if present)
+        const cleanValue = netSalesValue.replace(/"/g, '').trim();
+        if (cleanValue && cleanValue !== 'Net Sales' && cleanValue !== '') {
+          const amount = parseFloat(cleanValue);
+          if (!isNaN(amount) && amount > 0) {
+            totalSales += amount;
+            transactionCount++;
+            console.log(`💰 Found transaction: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+          } else {
+            console.log(`📄 Invalid or zero amount: "${cleanValue}"`);
+          }
+        } else {
+          console.log(`📄 Empty or header value: "${cleanValue}"`);
         }
       } else {
-        console.log(`📄 No dollar amounts found in line: "${line}"`);
+        console.log(`📄 Line has insufficient columns (${columns.length}), skipping`);
       }
     }
     
