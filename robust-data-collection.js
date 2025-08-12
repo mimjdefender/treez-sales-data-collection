@@ -210,51 +210,132 @@ async function scrapeStoreData(store) {
     // Approach 2: Look for date range dropdowns or buttons
     if (!dateSet) {
       try {
-        const dateRangeSelectors = [
-          '.date-range-dropdown',
-          '.date-time-range-container',
-          '[class*="date"]',
-          'button[class*="date"]',
-          'div[class*="date"]'
+        // First, try to find the specific date picker elements we saw in the logs
+        const specificSelectors = [
+          '.date-picker',
+          '.transfer-date-range',
+          '.clear-button.transfer-date-range.date-picker'
         ];
         
-        for (const selector of dateRangeSelectors) {
+        for (const selector of specificSelectors) {
           try {
             const dateElement = await page.locator(selector);
             if (await dateElement.isVisible()) {
-              console.log(`📅 Found date element with selector: ${selector}`);
+              console.log(`📅 Found date picker element with selector: ${selector}`);
+              
+              // Click to open the date picker
               await dateElement.click();
-              await page.waitForTimeout(1000);
+              console.log(`📅 Clicked date picker, waiting for date selection to open...`);
+              await page.waitForTimeout(2000);
+              
+              // Look for the target date in the opened picker
+              const targetDateString = `${targetDate.month}/${targetDate.day}/${targetDate.year}`;
+              console.log(`📅 Looking for date: ${targetDateString} in the date picker`);
               
               // Try to find and click on the specific date
-              const targetDateString = `${targetDate.month}/${targetDate.day}/${targetDate.year}`;
-              console.log(`📅 Looking for date: ${targetDateString}`);
-              
-              // Look for the date in various formats
               const dateFormats = [
                 targetDateString,
                 `${targetDate.month}-${targetDate.day}-${targetDate.year}`,
-                `${targetDate.year}-${targetDate.month}-${targetDate.day}`
+                `${targetDate.year}-${targetDate.month}-${targetDate.day}`,
+                `${targetDate.month.toString().padStart(2, '0')}/${targetDate.day.toString().padStart(2, '0')}/${targetDate.year}`,
+                `${targetDate.month.toString().padStart(2, '0')}-${targetDate.day.toString().padStart(2, '0')}-${targetDate.year}`
               ];
               
               for (const format of dateFormats) {
                 try {
-                  const dateButton = await page.locator(`[aria-label*="${format}"], [title*="${format}"], [data-value*="${format}"]`);
-                  if (await dateButton.isVisible()) {
-                    console.log(`📅 Found date button for: ${format}`);
-                    await dateButton.click();
-                    dateSet = true;
-                    break;
+                  // Look for the date in various ways
+                  const dateSelectors = [
+                    `[aria-label*="${format}"]`,
+                    `[title*="${format}"]`,
+                    `[data-value*="${format}"]`,
+                    `[data-date*="${format}"]`,
+                    `td[data-date*="${format}"]`,
+                    `span[data-date*="${format}"]`,
+                    `div[data-date*="${format}"]`,
+                    `button[data-date*="${format}"]`
+                  ];
+                  
+                  for (const dateSelector of dateSelectors) {
+                    try {
+                      const dateButton = await page.locator(dateSelector);
+                      if (await dateButton.isVisible()) {
+                        console.log(`📅 Found date button for: ${format} with selector: ${dateSelector}`);
+                        await dateButton.click();
+                        console.log(`📅 Clicked date: ${format}`);
+                        dateSet = true;
+                        break;
+                      }
+                    } catch (e) {
+                      // Continue to next selector
+                    }
                   }
+                  
+                  if (dateSet) break;
                 } catch (e) {
                   // Continue to next format
                 }
               }
               
-              if (dateSet) break;
+              if (dateSet) {
+                // Wait for the date change to take effect
+                await page.waitForTimeout(2000);
+                console.log(`✅ Date picker interaction completed`);
+                break;
+              }
             }
           } catch (e) {
-            // Continue to next selector
+            console.log(`⚠️ Error with selector ${selector}: ${e.message}`);
+          }
+        }
+        
+        // If specific selectors didn't work, try general date-related elements
+        if (!dateSet) {
+          const generalSelectors = [
+            '.date-range-dropdown',
+            '.date-time-range-container',
+            '[class*="date"]',
+            'button[class*="date"]',
+            'div[class*="date"]'
+          ];
+          
+          for (const selector of generalSelectors) {
+            try {
+              const dateElement = await page.locator(selector);
+              if (await dateElement.isVisible()) {
+                console.log(`📅 Found general date element with selector: ${selector}`);
+                await dateElement.click();
+                await page.waitForTimeout(1000);
+                
+                // Try to find and click on the specific date
+                const targetDateString = `${targetDate.month}/${targetDate.day}/${targetDate.year}`;
+                console.log(`📅 Looking for date: ${targetDateString}`);
+                
+                // Look for the date in various formats
+                const dateFormats = [
+                  targetDateString,
+                  `${targetDate.month}-${targetDate.day}-${targetDate.year}`,
+                  `${targetDate.year}-${targetDate.month}-${targetDate.day}`
+                ];
+                
+                for (const format of dateFormats) {
+                  try {
+                    const dateButton = await page.locator(`[aria-label*="${format}"], [title*="${format}"], [data-value*="${format}"]`);
+                    if (await dateButton.isVisible()) {
+                      console.log(`📅 Found date button for: ${format}`);
+                      await dateButton.click();
+                      dateSet = true;
+                      break;
+                    }
+                  } catch (e) {
+                    // Continue to next format
+                  }
+                }
+                
+                if (dateSet) break;
+              }
+            } catch (e) {
+              // Continue to next selector
+            }
           }
         }
       } catch (e) {
