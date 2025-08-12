@@ -160,8 +160,13 @@ async function scrapeStoreData(store) {
     console.log(`📅 Current UTC time: ${currentUTC.toISOString()}`);
     console.log(`📅 Current EST time: ${currentEST.toLocaleDateString('en-US')}, ${currentEST.toLocaleTimeString('en-US')}`);
     
-    // Find and fill the date input - try multiple selectors
-    let dateInput = null;
+    // Try to find and interact with date selection elements
+    console.log(`🔍 Looking for date selection elements...`);
+    
+    // Try multiple approaches to set the date
+    let dateSet = false;
+    
+    // Approach 1: Look for standard date inputs
     const dateSelectors = [
       'input[type="date"]',
       'input[data-testid="date-input"]',
@@ -173,61 +178,124 @@ async function scrapeStoreData(store) {
     
     for (const selector of dateSelectors) {
       try {
-        dateInput = await page.locator(selector);
+        const dateInput = await page.locator(selector);
         if (await dateInput.isVisible()) {
           console.log(`📅 Found date input with selector: ${selector}`);
-          break;
+          const dateString = `${targetDate.year}-${targetDate.month.toString().padStart(2, '0')}-${targetDate.day.toString().padStart(2, '0')}`;
+          console.log(`📅 Setting date input to: ${dateString}`);
+          
+          await dateInput.clear();
+          await dateInput.fill(dateString);
+          await dateInput.evaluate((el) => {
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('blur', { bubbles: true }));
+          });
+          
+          await page.waitForTimeout(2000);
+          const actualValue = await dateInput.inputValue();
+          console.log(`📅 Date input value after setting: ${actualValue}`);
+          
+          if (actualValue === dateString) {
+            console.log(`✅ Date input successfully set to: ${dateString}`);
+            dateSet = true;
+            break;
+          }
         }
       } catch (e) {
         // Continue to next selector
       }
     }
     
-    if (dateInput && await dateInput.isVisible()) {
-      const dateString = `${targetDate.year}-${targetDate.month.toString().padStart(2, '0')}-${targetDate.day.toString().padStart(2, '0')}`;
-      console.log(`📅 Setting date input to: ${dateString}`);
-      
-      // Clear and fill the date input
-      await dateInput.clear();
-      await dateInput.fill(dateString);
-      
-      // Trigger multiple change events to ensure it takes effect
-      await dateInput.evaluate((el) => {
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
-      });
-      
-      // Wait for the change to take effect
-      await page.waitForTimeout(2000);
-      
-      // Verify the date was set
-      const actualValue = await dateInput.inputValue();
-      console.log(`📅 Date input value after setting: ${actualValue}`);
-      
-      if (actualValue !== dateString) {
-        console.log(`⚠️ Date input value mismatch - expected: ${dateString}, got: ${actualValue}`);
-      } else {
-        console.log(`✅ Date input successfully set to: ${dateString}`);
+    // Approach 2: Look for date range dropdowns or buttons
+    if (!dateSet) {
+      try {
+        const dateRangeSelectors = [
+          '.date-range-dropdown',
+          '.date-time-range-container',
+          '[class*="date"]',
+          'button[class*="date"]',
+          'div[class*="date"]'
+        ];
+        
+        for (const selector of dateRangeSelectors) {
+          try {
+            const dateElement = await page.locator(selector);
+            if (await dateElement.isVisible()) {
+              console.log(`📅 Found date element with selector: ${selector}`);
+              await dateElement.click();
+              await page.waitForTimeout(1000);
+              
+              // Try to find and click on the specific date
+              const targetDateString = `${targetDate.month}/${targetDate.day}/${targetDate.year}`;
+              console.log(`📅 Looking for date: ${targetDateString}`);
+              
+              // Look for the date in various formats
+              const dateFormats = [
+                targetDateString,
+                `${targetDate.month}-${targetDate.day}-${targetDate.year}`,
+                `${targetDate.year}-${targetDate.month}-${targetDate.day}`
+              ];
+              
+              for (const format of dateFormats) {
+                try {
+                  const dateButton = await page.locator(`[aria-label*="${format}"], [title*="${format}"], [data-value*="${format}"]`);
+                  if (await dateButton.isVisible()) {
+                    console.log(`📅 Found date button for: ${format}`);
+                    await dateButton.click();
+                    dateSet = true;
+                    break;
+                  }
+                } catch (e) {
+                  // Continue to next format
+                }
+              }
+              
+              if (dateSet) break;
+            }
+          } catch (e) {
+            // Continue to next selector
+          }
+        }
+      } catch (e) {
+        console.log(`⚠️ Error trying date range selectors: ${e.message}`);
       }
-    } else {
-      console.log(`⚠️ No date input found with any selector, proceeding with default date`);
-      console.log(`🔍 Available input fields:`);
+    }
+    
+    if (!dateSet) {
+      console.log(`⚠️ Could not set date automatically, proceeding with default date`);
+      console.log(`🔍 Available input fields and date-related elements:`);
       
-      // Debug: show all input fields on the page
-      const allInputs = await page.evaluate(() => {
+      // Debug: show all input fields and date-related elements on the page
+      const pageElements = await page.evaluate(() => {
         const inputs = document.querySelectorAll('input');
-        return Array.from(inputs).map(input => ({
-          type: input.type,
-          id: input.id,
-          name: input.name,
-          placeholder: input.placeholder,
-          className: input.className
-        }));
+        const dateElements = document.querySelectorAll('[class*="date"], [id*="date"], [name*="date"]');
+        
+        return {
+          inputs: Array.from(inputs).map(input => ({
+            type: input.type,
+            id: input.id,
+            name: input.name,
+            placeholder: input.placeholder,
+            className: input.className
+          })),
+          dateElements: Array.from(dateElements).map(el => ({
+            tagName: el.tagName,
+            className: el.className,
+            id: el.id,
+            textContent: el.textContent?.substring(0, 100)
+          }))
+        };
       });
       
-      allInputs.forEach((input, index) => {
+      console.log(`📊 Input fields found: ${pageElements.inputs.length}`);
+      pageElements.inputs.forEach((input, index) => {
         console.log(`  Input ${index + 1}: type="${input.type}", id="${input.id}", name="${input.name}", placeholder="${input.placeholder}"`);
+      });
+      
+      console.log(`📊 Date-related elements found: ${pageElements.dateElements.length}`);
+      pageElements.dateElements.forEach((el, index) => {
+        console.log(`  Date Element ${index + 1}: <${el.tagName}> class="${el.className}" id="${el.id}" text="${el.textContent}"`);
       });
     }
     
