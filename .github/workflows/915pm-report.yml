@@ -1,5 +1,9 @@
 name: 9:15 PM Final Sales Report
 
+# OPTIMIZATION: This workflow uses robust-data-collection.js which prioritizes page scraping
+# over CSV download. CSV is only downloaded as a fallback when page scraping fails.
+# Uses COLLECTION_TIME=final for proper date handling when stores close at 9:00 PM.
+
 on:
   schedule:
     # 9:15 PM EST (2:15 AM UTC next day) - Correct time for FINAL collection
