@@ -211,14 +211,14 @@ async function scrapeStoreData(store) {
     if (!dateSet) {
       try {
         // First, try to find the specific date picker elements we saw in the logs
-        // We need to target the date range element specifically, not the time range
+        // Based on the user's recording, we need to target the filter box container
         const specificSelectors = [
-          // Target the date range element specifically by its text content
+          // Primary selector from the recording - the date filter box
+          'div.filter-boxes-container > div:nth-of-type(1) > div > div > div',
+          // Fallback to the date range text we saw in logs
           'div:has-text("date_range")',
-          // Fallback to more specific selectors
-          '.clear-button.transfer-date-range.date-picker:has-text("date_range")',
-          // If those don't work, try the general approach
-          '.date-picker:has-text("date_range")'
+          // Alternative approach
+          '.clear-button.transfer-date-range.date-picker:has-text("date_range")'
         ];
         
         for (const selector of specificSelectors) {
@@ -237,7 +237,7 @@ async function scrapeStoreData(store) {
               const targetDateString = `${targetDate.month}/${targetDate.day}/${targetDate.year}`;
               console.log(`📅 Looking for date: ${targetDateString} in the date picker`);
               
-              // Try to find and click on the specific date
+              // Based on the recording, we need to find and double-click on the specific date span
               const dateFormats = [
                 targetDateString,
                 `${targetDate.month}-${targetDate.day}-${targetDate.year}`,
@@ -248,25 +248,26 @@ async function scrapeStoreData(store) {
               
               for (const format of dateFormats) {
                 try {
-                  // Look for the date in various ways
+                  // Look for the date span element (based on the recording)
                   const dateSelectors = [
+                    // Primary selector from recording - the date span
+                    `span.right-span-selected > span:has-text("${format}")`,
+                    // Alternative selectors
+                    `span:has-text("${format}")`,
                     `[aria-label*="${format}"]`,
                     `[title*="${format}"]`,
                     `[data-value*="${format}"]`,
-                    `[data-date*="${format}"]`,
-                    `td[data-date*="${format}"]`,
-                    `span[data-date*="${format}"]`,
-                    `div[data-date*="${format}"]`,
-                    `button[data-date*="${format}"]`
+                    `[data-date*="${format}"]`
                   ];
                   
                   for (const dateSelector of dateSelectors) {
                     try {
-                      const dateButton = await page.locator(dateSelector);
+                      const dateButton = await page.locator(dateSelector).first();
                       if (await dateButton.isVisible()) {
                         console.log(`📅 Found date button for: ${format} with selector: ${dateSelector}`);
-                        await dateButton.click();
-                        console.log(`📅 Clicked date: ${format}`);
+                        // Based on the recording, we need to double-click the date
+                        await dateButton.dblclick();
+                        console.log(`📅 Double-clicked date: ${format}`);
                         dateSet = true;
                         break;
                       }
