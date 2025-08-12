@@ -1,5 +1,9 @@
 name: Sales Data Collection
 
+# OPTIMIZATION: This workflow now uses robust-data-collection.js which prioritizes page scraping
+# over CSV download. CSV is only downloaded as a fallback when page scraping fails.
+# This improves performance and reliability for both 4:20 PM and 9:15 PM collections.
+
 on:
   schedule:
     # 4:20 PM EST (9:20 PM UTC during standard time, 8:20 PM UTC during daylight saving)
@@ -52,8 +56,39 @@ jobs:
     - name: Test upload function
       run: node test-upload.js
       
-    - name: Run sales data collection
-      run: npm start
+    - name: Show collection type and script
+      run: |
+        echo "🔍 Collection Type Detection:"
+        if [ "${{ github.event.schedule }}" = "20 21 * * *" ]; then
+          echo "⏰ 4:20 PM EST collection detected"
+          echo "📊 Will run: node robust-data-collection.js"
+        elif [ "${{ github.event.schedule }}" = "15 2 * * *" ]; then
+          echo "⏰ 9:15 PM EST collection detected"
+          echo "📊 Will run: COLLECTION_TIME=final node robust-data-collection.js"
+        elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "🔄 Manual trigger detected"
+          echo "📊 Will run: node robust-data-collection.js (default MID-DAY mode)"
+        else
+          echo "❓ Unknown trigger type: ${{ github.event_name }}"
+        fi
+        
+    - name: Run sales data collection (4:20 PM)
+      if: github.event.schedule == '20 21 * * *'
+      run: |
+        echo "🚀 Starting 4:20 PM EST collection..."
+        node robust-data-collection.js
+      
+    - name: Run sales data collection (9:15 PM)
+      if: github.event.schedule == '15 2 * * *'
+      run: |
+        echo "🚀 Starting 9:15 PM EST collection..."
+        COLLECTION_TIME=final node robust-data-collection.js
+      
+    - name: Run sales data collection (manual trigger)
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        echo "🚀 Starting manual collection (MID-DAY mode)..."
+        node robust-data-collection.js
       
     - name: Upload logs and debug files
       if: always()
