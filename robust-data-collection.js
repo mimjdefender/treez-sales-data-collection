@@ -6,6 +6,10 @@ const path = require('path');
 // OPTIMIZATION: This script now prioritizes page scraping over CSV download
 // CSV is only downloaded as a fallback when page scraping completely fails
 // This improves performance and reliability since CSV calculation is complex
+//
+// TIMEZONE FIX: GitHub Actions runs in UTC timezone, but stores operate on EST/EDT time.
+// When GitHub Actions runs at 9:20 PM UTC (4:20 PM EST), it uses the previous UTC date
+// to ensure compatibility with EST business hours and data availability.
 
 const stores = [
   { 
