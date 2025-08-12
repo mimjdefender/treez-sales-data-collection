@@ -211,15 +211,20 @@ async function scrapeStoreData(store) {
     if (!dateSet) {
       try {
         // First, try to find the specific date picker elements we saw in the logs
+        // We need to target the date range element specifically, not the time range
         const specificSelectors = [
-          '.date-picker',
-          '.transfer-date-range',
-          '.clear-button.transfer-date-range.date-picker'
+          // Target the date range element specifically by its text content
+          'div:has-text("date_range")',
+          // Fallback to more specific selectors
+          '.clear-button.transfer-date-range.date-picker:has-text("date_range")',
+          // If those don't work, try the general approach
+          '.date-picker:has-text("date_range")'
         ];
         
         for (const selector of specificSelectors) {
           try {
-            const dateElement = await page.locator(selector);
+            // Use first() to get only the first matching element and avoid strict mode violation
+            const dateElement = await page.locator(selector).first();
             if (await dateElement.isVisible()) {
               console.log(`📅 Found date picker element with selector: ${selector}`);
               
