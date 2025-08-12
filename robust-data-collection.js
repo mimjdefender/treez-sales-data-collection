@@ -3,6 +3,10 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 
+// OPTIMIZATION: This script now prioritizes page scraping over CSV download
+// CSV is only downloaded as a fallback when page scraping completely fails
+// This improves performance and reliability since CSV calculation is complex
+
 const stores = [
   { 
     name: 'cheboygan', 
@@ -98,21 +102,26 @@ async function scrapeStoreData(store) {
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
   });
   
-  const context = await browser.newContext({ 
-    acceptDownloads: true,
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-  });
-  
-  const page = await context.newPage();
-
   try {
-    // Navigate to login
+    const context = await browser.newContext({ 
+      acceptDownloads: true,
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    });
+    
+    const page = await context.newPage();
+    
+    // Set up download behavior
+    await page.context().setDefaultTimeout(30000);
+    
+    // Navigate to login first
+    console.log(`🔐 Navigating to login page...`);
     await page.goto(`${store.url}/portalDispensary/portal/login`, { 
       waitUntil: 'networkidle',
       timeout: 30000 
     });
     
     // Login
+    console.log(`🔐 Logging in...`);
     const emailField = await page.waitForSelector('#Email', { timeout: 10000 });
     await emailField.fill(process.env.TREEZ_EMAIL);
     
@@ -122,76 +131,53 @@ async function scrapeStoreData(store) {
     
     await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
     
-    // Navigate to report
-    await page.goto(store.reportUrl, { 
-      waitUntil: 'networkidle',
-      timeout: 30000 
-    });
+    // Navigate to the report page
+    console.log(`🌐 Navigating to ${store.reportUrl}`);
+    await page.goto(store.reportUrl, { waitUntil: 'networkidle' });
     
-    // Wait for the page to fully load
-    await page.waitForTimeout(10000);
+    // Wait for the page to load
+    await page.waitForTimeout(2000);
     
-    // Wait for summary items to be present
-    await page.waitForSelector('.summary-item', { timeout: 15000 });
-    
-    // Set the date on the page to ensure we get the correct data
+    // Set the date for the report
     const targetDate = getTargetDate();
     console.log(`📅 Setting date to ${targetDate.month}/${targetDate.day}/${targetDate.year}...`);
-    console.log(`📅 Target date object:`, targetDate);
-    console.log(`📅 Current UTC time:`, new Date().toISOString());
-    console.log(`📅 Current EST time:`, new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    console.log(`📅 Target date object: *** year: ${targetDate.year}, month: ${targetDate.month}, day: ${targetDate.day} ***`);
     
-    await page.evaluate((date) => {
-      // Find and set the date input field
-      const dateInput = document.querySelector('input[type="date"]');
-      if (dateInput) {
-        const dateString = `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
-        console.log(`📅 Date string being sent to Treez: "${dateString}"`);
-        dateInput.value = dateString;
-        dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log(`Date set to: ${dateString}`);
-        
-        // Debug: Check what date is actually set
-        console.log(`📅 Date input value after setting: ${dateInput.value}`);
-        
-        // For FINAL collection, try to set a time range for the entire day
-        // Note: process.env is not available in browser context, so we'll always try to set time range
-        console.log(`⏰ Attempting to set time range for entire day`);
-        // Look for time range inputs and set them to cover the entire day
-        const timeInputs = document.querySelectorAll('input[type="time"]');
-        console.log(`📅 Found ${timeInputs.length} time inputs`);
-        
-        if (timeInputs.length >= 2) {
-          timeInputs[0].value = '00:00'; // Start of day
-          timeInputs[1].value = '23:59'; // End of day
-          timeInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-          timeInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
-          console.log(`Time range set: 00:00 - 23:59`);
-          console.log(`📅 Time input 1 value: ${timeInputs[0].value}`);
-          console.log(`📅 Time input 2 value: ${timeInputs[1].value}`);
-        } else {
-          console.log(`No time range inputs found, continuing without time range`);
-        }
-      } else {
-        console.log('No date input found, continuing with default date');
-      }
-    }, targetDate);
+    // Log current time for debugging
+    const currentUTC = new Date();
+    const currentEST = new Date(currentUTC.getTime() - (4 * 60 * 60 * 1000)); // EST is UTC-4
+    console.log(`📅 Current UTC time: ${currentUTC.toISOString()}`);
+    console.log(`📅 Current EST time: ${currentEST.toLocaleDateString('en-US')}, ${currentEST.toLocaleTimeString('en-US')}`);
     
-    // Wait for date to be set and page to update
-    await page.waitForTimeout(3000);
+    // Find and fill the date input
+    const dateInput = await page.locator('input[type="date"]');
+    if (await dateInput.isVisible()) {
+      const dateString = `${targetDate.year}-${targetDate.month.toString().padStart(2, '0')}-${targetDate.day.toString().padStart(2, '0')}`;
+      console.log(`📅 Setting date input to: ${dateString}`);
+      await dateInput.fill(dateString);
+      
+      // Trigger change event
+      await dateInput.evaluate((el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+      await page.waitForTimeout(1000);
+    } else {
+      console.log(`⚠️ Date input not found, proceeding with default date`);
+    }
     
-    // Generate the report first
+    // Click "Generate Report" button
     console.log(`📊 Step 1: Clicking "Generate Report"...`);
-    await page.click('button:has-text("Generate Report")');
+    const generateButton = await page.locator('button:has-text("Generate Report")');
+    if (await generateButton.isVisible()) {
+      await generateButton.click();
+      console.log(`⏳ Waiting for report to generate...`);
+      await page.waitForTimeout(5000); // Wait for report to load
+    } else {
+      console.log(`⚠️ Generate Report button not found, report may already be generated`);
+    }
     
-    // Wait for the report to generate and summary items to appear
-    console.log(`⏳ Waiting for report to generate...`);
-    await page.waitForTimeout(10000); // Wait longer for full data
-    
-    // Wait for summary items to be present after report generation
+    // Wait for summary items to appear after report generation
     await page.waitForSelector('.summary-item', { timeout: 15000 });
     
-    // Debug: Check what the page shows us
+    // Check page content after report generation
     console.log(`📊 Checking page content after report generation...`);
     const pageContent = await page.evaluate(() => {
       const summaryItems = document.querySelectorAll('.summary-item');
@@ -280,22 +266,26 @@ async function scrapeStoreData(store) {
       }
     }
     
-    // Always try to download CSV for more accurate data
-    console.log(`📊 Always downloading CSV for accurate transaction data...`);
+    // If we successfully got sales data from the page, return it immediately
+    if (pageSalesAmount > 0) {
+      console.log(`✅ Successfully extracted sales from page: $${pageSalesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      console.log(`📊 Skipping CSV download since page data is available`);
+      return pageSalesAmount;
+    }
     
-    // Try to download CSV and calculate from transactions
+    // Only download CSV if page scraping completely failed
+    // CSV calculation is complex and error-prone, so we prioritize page data
+    console.log(`⚠️ Page scraping failed, falling back to CSV download...`);
+    
+    // Try to download CSV and calculate from transactions (fallback only)
     const csvSalesAmount = await downloadCSVAndCalculate(store, page);
     
     if (csvSalesAmount > 0) {
       console.log(`✅ CSV calculation successful: $${csvSalesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       return csvSalesAmount;
-    } else if (pageSalesAmount > 0) {
-      // If CSV failed but we have page data, use that
-      console.log(`⚠️ CSV failed, using page data: $${pageSalesAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-      return pageSalesAmount;
     }
     
-    console.log(`❌ No sales amount found`);
+    console.log(`❌ No sales amount found from either page or CSV`);
     return 0;
     
   } catch (error) {
