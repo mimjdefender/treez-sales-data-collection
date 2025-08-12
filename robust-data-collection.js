@@ -687,17 +687,15 @@ function getTargetDate() {
         // For FINAL collection in GitHub Actions (runs at 2:15 AM UTC)
         // This is 9:15 PM EST on the previous EST day
         // Since stores close at 9:00 PM EST and show sales until midnight EST
-        // We need to get data for the EST day that just ended (August 11th)
+        // We need to get data for the EST day that's still running until midnight EST
         // When it's 2:15 AM UTC, it's 9:15 PM EST on August 11th
-        // So we want August 11th data, which means we need to go back 1 UTC day
-        const targetDate = new Date(currentDate);
-        targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+        // So we want August 11th data, which means we use the current UTC date
+        // because August 11th EST business day is still active
+        const year = currentDate.getUTCFullYear();
+        const month = currentDate.getUTCMonth() + 1; // getMonth() is 0-indexed
+        const day = currentDate.getUTCDate();
         
-        const year = targetDate.getUTCFullYear();
-        const month = targetDate.getUTCMonth() + 1; // getMonth() is 0-indexed
-        const day = targetDate.getUTCDate();
-        
-        console.log(`📅 GitHub Actions FINAL collection: Using previous UTC date (${year}-${month}-${day}) for EST business day that just ended`);
+        console.log(`📅 GitHub Actions FINAL collection: Using current UTC date (${year}-${month}-${day}) for EST business day that's still running until midnight`);
         return { year, month, day };
       } else {
         // For MID-DAY collection in GitHub Actions (runs at 9:20 PM UTC)
