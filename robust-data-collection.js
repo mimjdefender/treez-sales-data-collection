@@ -8,8 +8,15 @@ const path = require('path');
 // This improves performance and reliability since CSV calculation is complex
 //
 // TIMEZONE FIX: GitHub Actions runs in UTC timezone, but stores operate on EST/EDT time.
-// When GitHub Actions runs at 9:20 PM UTC (4:20 PM EST), it uses the previous UTC date
-// to ensure compatibility with EST business hours and data availability.
+// 
+// MID-DAY Collection (4:20 PM EST):
+// - GitHub Actions runs at 9:20 PM UTC (4:20 PM EST same day)
+// - Uses current UTC date for EST business hours
+//
+// FINAL Collection (9:15 PM EST):
+// - GitHub Actions runs at 2:15 AM UTC next day (9:15 PM EST previous day)
+// - Uses previous UTC date to get EST business day that just ended
+// - This is critical because stores close at 9:00 PM EST but show sales until midnight EST
 
 const stores = [
   { 
@@ -153,18 +160,75 @@ async function scrapeStoreData(store) {
     console.log(`📅 Current UTC time: ${currentUTC.toISOString()}`);
     console.log(`📅 Current EST time: ${currentEST.toLocaleDateString('en-US')}, ${currentEST.toLocaleTimeString('en-US')}`);
     
-    // Find and fill the date input
-    const dateInput = await page.locator('input[type="date"]');
-    if (await dateInput.isVisible()) {
+    // Find and fill the date input - try multiple selectors
+    let dateInput = null;
+    const dateSelectors = [
+      'input[type="date"]',
+      'input[data-testid="date-input"]',
+      'input[name*="date"]',
+      'input[id*="date"]',
+      'input[placeholder*="date"]',
+      'input[placeholder*="Date"]'
+    ];
+    
+    for (const selector of dateSelectors) {
+      try {
+        dateInput = await page.locator(selector);
+        if (await dateInput.isVisible()) {
+          console.log(`📅 Found date input with selector: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+    
+    if (dateInput && await dateInput.isVisible()) {
       const dateString = `${targetDate.year}-${targetDate.month.toString().padStart(2, '0')}-${targetDate.day.toString().padStart(2, '0')}`;
       console.log(`📅 Setting date input to: ${dateString}`);
+      
+      // Clear and fill the date input
+      await dateInput.clear();
       await dateInput.fill(dateString);
       
-      // Trigger change event
-      await dateInput.evaluate((el) => el.dispatchEvent(new Event('change', { bubbles: true })));
-      await page.waitForTimeout(1000);
+      // Trigger multiple change events to ensure it takes effect
+      await dateInput.evaluate((el) => {
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+      });
+      
+      // Wait for the change to take effect
+      await page.waitForTimeout(2000);
+      
+      // Verify the date was set
+      const actualValue = await dateInput.inputValue();
+      console.log(`📅 Date input value after setting: ${actualValue}`);
+      
+      if (actualValue !== dateString) {
+        console.log(`⚠️ Date input value mismatch - expected: ${dateString}, got: ${actualValue}`);
+      } else {
+        console.log(`✅ Date input successfully set to: ${dateString}`);
+      }
     } else {
-      console.log(`⚠️ Date input not found, proceeding with default date`);
+      console.log(`⚠️ No date input found with any selector, proceeding with default date`);
+      console.log(`🔍 Available input fields:`);
+      
+      // Debug: show all input fields on the page
+      const allInputs = await page.evaluate(() => {
+        const inputs = document.querySelectorAll('input');
+        return Array.from(inputs).map(input => ({
+          type: input.type,
+          id: input.id,
+          name: input.name,
+          placeholder: input.placeholder,
+          className: input.className
+        }));
+      });
+      
+      allInputs.forEach((input, index) => {
+        console.log(`  Input ${index + 1}: type="${input.type}", id="${input.id}", name="${input.name}", placeholder="${input.placeholder}"`);
+      });
     }
     
     // Click "Generate Report" button
@@ -616,37 +680,37 @@ function getTargetDate() {
   console.log(`  - Current local time: ${currentDate.toString()}`);
   console.log(`  - Current local date: ${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getDate()}`);
   
-  if (isGitHubActions) {
-    console.log(`🌐 GitHub Actions detected - using UTC timezone logic`);
-    
-    if (isFinalCollection) {
-      // For FINAL collection in GitHub Actions (runs at 2:15 AM UTC)
-      // We want the date that just ended at 9:00 PM EST (2:00 AM UTC next day)
-      // So we use the previous UTC day
-      const targetDate = new Date(currentDate);
-      targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+          if (isGitHubActions) {
+      console.log(`🌐 GitHub Actions detected - using UTC timezone logic`);
       
-      const year = targetDate.getUTCFullYear();
-      const month = targetDate.getUTCMonth() + 1; // getMonth() is 0-indexed
-      const day = targetDate.getUTCDate();
-      
-      console.log(`📅 GitHub Actions FINAL collection: Using previous UTC date (${year}-${month}-${day})`);
-      return { year, month, day };
+      if (isFinalCollection) {
+        // For FINAL collection in GitHub Actions (runs at 2:15 AM UTC)
+        // This is 9:15 PM EST on the previous EST day
+        // Since stores close at 9:00 PM EST and show sales until midnight EST
+        // We need to get data for the EST day that just ended (August 11th)
+        // When it's 2:15 AM UTC, it's 9:15 PM EST on August 11th
+        // So we want August 11th data, which means we need to go back 1 UTC day
+        const targetDate = new Date(currentDate);
+        targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+        
+        const year = targetDate.getUTCFullYear();
+        const month = targetDate.getUTCMonth() + 1; // getMonth() is 0-indexed
+        const day = targetDate.getUTCDate();
+        
+        console.log(`📅 GitHub Actions FINAL collection: Using previous UTC date (${year}-${month}-${day}) for EST business day that just ended`);
+        return { year, month, day };
+      } else {
+        // For MID-DAY collection in GitHub Actions (runs at 9:20 PM UTC)
+        // This is 4:20 PM EST on the same UTC day
+        // Since stores are open and have data, use current UTC date
+        const year = currentDate.getUTCFullYear();
+        const month = currentDate.getUTCMonth() + 1; // getMonth() is 0-indexed
+        const day = currentDate.getUTCDate();
+        
+        console.log(`📅 GitHub Actions MID-DAY collection: Using current UTC date (${year}-${month}-${day}) for EST business hours`);
+        return { year, month, day };
+      }
     } else {
-      // For MID-DAY collection in GitHub Actions (runs at 9:20 PM UTC)
-      // This is 4:20 PM EST on the same UTC day
-      // But stores might not have data for this UTC date yet, so try previous UTC day
-      const targetDate = new Date(currentDate);
-      targetDate.setUTCDate(targetDate.getUTCDate() - 1);
-      
-      const year = targetDate.getUTCFullYear();
-      const month = targetDate.getUTCMonth() + 1; // getMonth() is 0-indexed
-      const day = targetDate.getUTCDate();
-      
-      console.log(`📅 GitHub Actions MID-DAY collection: Using previous UTC date (${year}-${month}-${day}) for EST compatibility`);
-      return { year, month, day };
-    }
-  } else {
     // Local environment - use local date logic
     if (isFinalCollection) {
       // For FINAL collection locally, use previous local day
