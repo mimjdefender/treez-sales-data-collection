@@ -1,12 +1,16 @@
 {
-  "name": "sales-data-collection-function",
+  "name": "treez-sales-collection-cloud-function",
   "version": "1.0.0",
+  "description": "Google Cloud Function for collecting Treez sales data",
   "main": "main.js",
-  "engines": {
-    "node": "18"
+  "scripts": {
+    "start": "node main.js",
+    "deploy": "gcloud functions deploy collectSalesData --runtime nodejs18 --trigger-http --allow-unauthenticated --memory 2GB --timeout 540s"
   },
   "dependencies": {
-    "playwright": "^1.43.1",
-    "googleapis": "^133.0.0"
+    "playwright": "^1.40.0"
+  },
+  "engines": {
+    "node": "18"
   }
 } 

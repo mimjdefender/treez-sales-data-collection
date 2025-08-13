@@ -555,8 +555,17 @@ async function downloadCSVAndCalculate(store, page) {
           
           console.log(`📥 CSV downloaded: ${downloadPath}`);
           
-          // Verify the CSV file size and content
+          // Create timestamped artifact filename
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const artifactFilename = `${store.name}-transactions-${timestamp}.csv`;
+          const artifactPath = path.join(__dirname, artifactFilename);
+          
+          // Copy CSV to artifact location with timestamp
           const fs = require('fs');
+          fs.copyFileSync(downloadPath, artifactPath);
+          console.log(`📁 CSV saved as artifact: ${artifactFilename}`);
+          
+          // Verify the CSV file size and content
           if (fs.existsSync(downloadPath)) {
             const stats = fs.statSync(downloadPath);
             const fileSize = stats.size;
@@ -630,37 +639,46 @@ async function downloadCSVAndCalculate(store, page) {
       // Wait for download to start with longer timeout for GitHub Actions
       const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
       
-      try {
-        const download = await downloadPromise;
-        const downloadPath = path.join(__dirname, `${store.name}-transactions.csv`);
-        await download.saveAs(downloadPath);
-        
-        console.log(`📥 CSV downloaded: ${downloadPath}`);
-        
-        // Verify the CSV file size and content
-        const fs = require('fs');
-        if (fs.existsSync(downloadPath)) {
-          const stats = fs.statSync(downloadPath);
-          const fileSize = stats.size;
-          console.log(`📄 CSV file size: ${fileSize} bytes`);
+              try {
+          const download = await downloadPromise;
+          const downloadPath = path.join(__dirname, `${store.name}-transactions.csv`);
+          await download.saveAs(downloadPath);
           
-          if (fileSize < 1000) {
-            console.log(`⚠️ WARNING: CSV file is very small (${fileSize} bytes), may be incomplete`);
+          console.log(`📥 CSV downloaded: ${downloadPath}`);
+          
+          // Create timestamped artifact filename
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const artifactFilename = `${store.name}-transactions-${timestamp}.csv`;
+          const artifactPath = path.join(__dirname, artifactFilename);
+          
+          // Copy CSV to artifact location with timestamp
+          const fs = require('fs');
+          fs.copyFileSync(downloadPath, artifactPath);
+          console.log(`📁 CSV saved as artifact: ${artifactFilename}`);
+          
+          // Verify the CSV file size and content
+          if (fs.existsSync(downloadPath)) {
+            const stats = fs.statSync(downloadPath);
+            const fileSize = stats.size;
+            console.log(`📄 CSV file size: ${fileSize} bytes`);
+            
+            if (fileSize < 1000) {
+              console.log(`⚠️ WARNING: CSV file is very small (${fileSize} bytes), may be incomplete`);
+            }
+            
+            // Read first few lines to verify content
+            const content = fs.readFileSync(downloadPath, 'utf8');
+            const lines = content.split('\n');
+            console.log(`📄 CSV has ${lines.length} lines`);
+            console.log(`📄 First line: "${lines[0]}"`);
+            console.log(`📄 Second line: "${lines[1]}"`);
+            
+            if (lines.length <= 2) {
+              console.log(`❌ ERROR: CSV appears to be incomplete (only ${lines.length} lines)`);
+            }
+          } else {
+            console.log(`❌ ERROR: CSV file not found at ${downloadPath}`);
           }
-          
-          // Read first few lines to verify content
-          const content = fs.readFileSync(downloadPath, 'utf8');
-          const lines = content.split('\n');
-          console.log(`📄 CSV has ${lines.length} lines`);
-          console.log(`📄 First line: "${lines[0]}"`);
-          console.log(`📄 Second line: "${lines[1]}"`);
-          
-          if (lines.length <= 2) {
-            console.log(`❌ ERROR: CSV appears to be incomplete (only ${lines.length} lines)`);
-          }
-        } else {
-          console.log(`❌ ERROR: CSV file not found at ${downloadPath}`);
-        }
         
         // Process the CSV to calculate Net Sales from transactions
         const netSales = await calculateNetSalesFromCSV(downloadPath);
