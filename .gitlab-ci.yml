@@ -1,0 +1,109 @@
+# GitLab CI/CD Pipeline for Treez Net Sales Collection
+# This pipeline runs the simplified script that successfully scrapes net sales data
+
+stages:
+  - setup
+  - collect
+  - upload
+
+variables:
+  NODE_VERSION: "18"
+
+# Setup stage - install dependencies and Playwright
+setup:
+  stage: setup
+  image: node:${NODE_VERSION}
+  script:
+    - echo "🔧 Setting up environment..."
+    - npm ci
+    - npx playwright install chromium
+    - echo "✅ Setup complete"
+  artifacts:
+    paths:
+      - node_modules/
+      - .cache/
+    expire_in: 1 hour
+
+# 4:20 PM EST collection (9:20 PM UTC during standard time)
+collect-420pm:
+  stage: collect
+  image: node:${NODE_VERSION}
+  dependencies:
+    - setup
+  script:
+    - echo "🚀 Starting 4:20 PM EST collection..."
+    - echo "⏰ Current UTC time: $(date -u)"
+    - echo "⏰ Current EST time: $(TZ=America/New_York date)"
+    - COLLECTION_TIME=mid-day node simple-net-sales.js
+  artifacts:
+    paths:
+      - net-sales-*.csv
+      - *.log
+    expire_in: 30 days
+  only:
+    - schedules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_NAME == "420pm"
+    - if: $CI_PIPELINE_SOURCE == "web" && $COLLECTION_TIME == "mid-day"
+
+# 9:15 PM EST collection (2:15 AM UTC next day during standard time)
+collect-915pm:
+  stage: collect
+  image: node:${NODE_VERSION}
+  dependencies:
+    - setup
+  script:
+    - echo "🚀 Starting 9:15 PM EST collection..."
+    - echo "⏰ Current UTC time: $(date -u)"
+    - echo "⏰ Current EST time: $(TZ=America/New_York date)"
+    - COLLECTION_TIME=final node simple-net-sales.js
+  artifacts:
+    paths:
+      - net-sales-*.csv
+      - *.log
+    expire_in: 30 days
+  only:
+    - schedules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_NAME == "915pm"
+    - if: $CI_PIPELINE_SOURCE == "web" && $COLLECTION_TIME == "final"
+
+# Manual trigger collection
+collect-manual:
+  stage: collect
+  image: node:${NODE_VERSION}
+  dependencies:
+    - setup
+  script:
+    - echo "🚀 Starting manual collection..."
+    - echo "⏰ Current UTC time: $(date -u)"
+    - echo "⏰ Current EST time: $(TZ=America/New_York date)"
+    - COLLECTION_TIME=${COLLECTION_TIME:-mid-day} node simple-net-sales.js
+  artifacts:
+    paths:
+      - net-sales-*.csv
+      - *.log
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Upload results to Google Drive (if credentials available)
+upload-to-drive:
+  stage: upload
+  image: node:${NODE_VERSION}
+  dependencies:
+    - collect-420pm
+    - collect-915pm
+    - collect-manual
+  script:
+    - echo "☁️ Uploading results to Google Drive..."
+    - if [ -f "./creds/credentials.json" ]; then
+        node uploadToDrive.js;
+      else
+        echo "⚠️ No Google Drive credentials found, skipping upload";
+      fi
+  artifacts:
+    paths:
+      - upload-*.log
+    expire_in: 7 days
+  when: always
