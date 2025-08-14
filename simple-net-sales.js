@@ -82,16 +82,16 @@ async function scrapeNetSales(store, browser, collectionTime) {
     await page.goto('https://medscafecheboygan.treez.io/portalDispensary/portal/ProductsReport');
     
     // Check if we need to login
-    const pageTitle = await page.title();
-    if (pageTitle.includes('Sign In') || pageTitle.includes('Login')) {
-             console.log('🔑 Need to login, navigating to login page...');
-       await page.goto('https://medscafecheboygan.treez.io/portalDispensary/portal/login');
-       await page.waitForTimeout(3000);
-       
-       // Debug: Check what's on the login page
-       console.log('🔍 Checking login page elements...');
-       const loginPageTitle = await page.title();
-       console.log(`📄 Page title: ${loginPageTitle}`);
+    const loginPageTitle = await page.title();
+    if (loginPageTitle.includes('Sign In') || loginPageTitle.includes('Login')) {
+      console.log('🔑 Need to login, navigating to login page...');
+      await page.goto('https://medscafecheboygan.treez.io/portalDispensary/portal/login');
+      await page.waitForTimeout(3000);
+      
+      // Debug: Check what's on the login page
+      console.log('🔍 Checking login page elements...');
+      const currentPageTitle = await page.title();
+      console.log(`📄 Page title: ${currentPageTitle}`);
        
        // Look for all input fields on the page
        const inputFields = await page.evaluate(() => {
@@ -270,16 +270,47 @@ async function scrapeNetSales(store, browser, collectionTime) {
      
      // Strategy 1: Look for the summary item with net sales (most reliable)
      try {
-       const summaryItem = await page.locator('.summary-item').filter({ hasText: /Net Sales/ }).first();
-       if (await summaryItem.isVisible()) {
-         const summaryText = await summaryItem.textContent();
-         console.log(`📊 Found summary item: ${summaryText}`);
-         
-         const match = summaryText.match(/\$([\d,]+\.\d+)/);
-         if (match) {
-           const amount = parseFloat(match[1].replace(/,/g, ''));
-           console.log(`💰 Net sales found in summary: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-           return amount;
+       const summaryItems = await page.locator('.summary-item').filter({ hasText: /Net Sales/ }).all();
+       console.log(`🔍 Found ${summaryItems.length} summary items with Net Sales`);
+       
+       // Look for the one with actual dollar amounts (not $0.00)
+       for (const summaryItem of summaryItems) {
+         try {
+           const summaryText = await summaryItem.textContent();
+           console.log(`📊 Checking summary item: ${summaryText}`);
+           
+           const match = summaryText.match(/\$([\d,]+\.\d+)/);
+           if (match) {
+             const amount = parseFloat(match[1].replace(/,/g, ''));
+             
+             // Skip if it's $0.00 (probably old/empty data)
+             if (amount > 0) {
+               console.log(`💰 Net sales found in summary: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+               return amount;
+             } else {
+               console.log(`⚠️  Skipping $0.00 summary item (likely old/empty data)`);
+             }
+           }
+         } catch (e) {
+           console.log(`⚠️  Error reading summary item: ${e.message}`);
+         }
+       }
+       
+       // If no non-zero amounts found, try the last one (most recent)
+       if (summaryItems.length > 0) {
+         try {
+           const lastSummaryItem = summaryItems[summaryItems.length - 1];
+           const summaryText = await lastSummaryItem.textContent();
+           console.log(`📊 Trying last summary item: ${summaryText}`);
+           
+           const match = summaryText.match(/\$([\d,]+\.\d+)/);
+           if (match) {
+             const amount = parseFloat(match[1].replace(/,/g, ''));
+             console.log(`💰 Net sales found in last summary: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+             return amount;
+           }
+         } catch (e) {
+           console.log(`⚠️  Error reading last summary item: ${e.message}`);
          }
        }
      } catch (e) {
