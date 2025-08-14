@@ -1,0 +1,91 @@
+name: Simple Sales Data Collection
+
+# SIMPLIFIED WORKFLOW: Uses simple-net-sales.js which only scrapes net sales from the page
+# No CSV downloads, no complex fallbacks - just clean, focused functionality
+
+on:
+  schedule:
+    # 4:20 PM EST (9:20 PM UTC during standard time)
+    - cron: '20 21 * * *'
+    # 9:15 PM EST (2:15 AM UTC next day during standard time)
+    - cron: '15 2 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  collect-sales-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Install Playwright browsers
+      run: npx playwright install chromium
+      
+    - name: Create environment file
+      run: |
+        echo "TREEZ_EMAIL=${{ secrets.TREEZ_EMAIL }}" > .env
+        echo "TREEZ_PASSWORD=${{ secrets.TREEZ_PASSWORD }}" >> .env
+        
+    - name: Show collection type and script
+      run: |
+        echo "🔍 Collection Type Detection:"
+        if [ "${{ github.event.schedule }}" = "20 21 * * *" ]; then
+          echo "⏰ 4:20 PM EST collection detected"
+          echo "📊 Will run: node simple-net-sales.js"
+        elif [ "${{ github.event.schedule }}" = "15 2 * * *" ]; then
+          echo "⏰ 9:15 PM EST collection detected"
+          echo "📊 Will run: COLLECTION_TIME=final node simple-net-sales.js"
+        elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "🔄 Manual trigger detected"
+          echo "📊 Will run: node simple-net-sales.js (default MID-DAY mode)"
+        else
+          echo "❓ Unknown trigger type: ${{ github.event_name }}"
+        fi
+        
+    - name: Run sales data collection (4:20 PM)
+      if: github.event.schedule == '20 21 * * *'
+      run: |
+        echo "🚀 Starting 4:20 PM EST collection..."
+        node simple-net-sales.js
+      
+    - name: Run sales data collection (9:15 PM)
+      if: github.event.schedule == '15 2 * * *'
+      run: |
+        echo "🚀 Starting 9:15 PM EST collection..."
+        COLLECTION_TIME=final node simple-net-sales.js
+      
+    - name: Run sales data collection (manual trigger)
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        echo "🚀 Starting manual collection (MID-DAY mode)..."
+        node simple-net-sales.js
+      
+    - name: Upload results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: net-sales-results
+        path: |
+          net-sales-*.csv
+        retention-days: 30
+        if-no-files-found: warn
+        
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: logs
+        path: |
+          *.log
+        retention-days: 7
+        if-no-files-found: warn
