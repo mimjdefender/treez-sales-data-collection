@@ -32,7 +32,16 @@ async function main() {
   console.log(`⏰ Collection time: ${collectionTime === 'final' ? '9:15 PM (final)' : '4:20 PM (mid-day update)'}`);
   
   const browser = await chromium.launch({ 
-    headless: process.env.GITHUB_ACTIONS ? true : false 
+    headless: process.env.GITHUB_ACTIONS ? true : false,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu'
+    ]
   });
   
   try {
@@ -212,7 +221,11 @@ async function scrapeNetSales(store, browser, collectionTime) {
       
       // Navigate to reports
       await page.goto(store.url);
-      await page.waitForTimeout(2000);
+      
+      // Wait longer for GitHub Actions environment
+      const waitTime = process.env.GITHUB_ACTIONS ? 5000 : 2000;
+      console.log(`⏳ Waiting ${waitTime}ms for page to load...`);
+      await page.waitForTimeout(waitTime);
     }
     
     // Skip date selection - Treez automatically shows current day's sales when logged in
@@ -256,14 +269,23 @@ async function scrapeNetSales(store, browser, collectionTime) {
        }
      }
      
-     if (generateButton && await generateButton.isVisible()) {
-       console.log('📊 Generating report...');
-       await generateButton.click();
-       await page.waitForTimeout(5000);
-       console.log('✅ Report generated');
-     } else {
-       console.log('⚠️ Generate Report button not found - proceeding without report generation');
-     }
+           if (generateButton && await generateButton.isVisible()) {
+        console.log('📊 Generating report...');
+        await generateButton.click();
+        
+        // Wait longer for GitHub Actions environment
+        const reportWaitTime = process.env.GITHUB_ACTIONS ? 10000 : 5000;
+        console.log(`⏳ Waiting ${reportWaitTime}ms for report to generate...`);
+        await page.waitForTimeout(reportWaitTime);
+        
+        // Additional wait for data to load
+        console.log('⏳ Waiting for data to load...');
+        await page.waitForTimeout(3000);
+        
+        console.log('✅ Report generated');
+      } else {
+        console.log('⚠️ Generate Report button not found - proceeding without report generation');
+      }
     
          // Extract net sales from page - handle multiple elements
      console.log('🔍 Extracting net sales from page...');
