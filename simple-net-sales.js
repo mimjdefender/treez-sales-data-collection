@@ -48,7 +48,7 @@ async function main() {
     }
     
     // Save results
-    const csvContent = `Store,Net Sales,Timestamp,Collection Type\n`;
+    let csvContent = `Store,Net Sales,Timestamp,Collection Type\n`;
     for (const [storeName, sales] of Object.entries(results)) {
       csvContent += `${storeName},${sales},${new Date().toISOString()},${collectionTime}\n`;
     }
@@ -317,6 +317,38 @@ async function scrapeNetSales(store, browser, collectionTime) {
        console.log('❌ Summary item approach failed:', e.message);
      }
      
+     // Strategy 1.5: Look for net sales in table rows or data cells
+     try {
+       console.log('🔍 Looking for net sales in table data...');
+       const tableCells = await page.locator('td, th, .cell, .data-cell').filter({ hasText: /Net Sales/i }).all();
+       console.log(`🔍 Found ${tableCells.length} table cells with Net Sales`);
+       
+       for (const cell of tableCells) {
+         try {
+           const cellText = await cell.textContent();
+           console.log(`📊 Checking table cell: ${cellText}`);
+           
+           // Look for dollar amount in this cell or nearby cells
+           const row = await cell.locator('..').first();
+           const rowText = await row.textContent();
+           console.log(`📊 Checking entire row: ${rowText}`);
+           
+           const match = rowText.match(/\$([\d,]+\.\d+)/);
+           if (match) {
+             const amount = parseFloat(match[1].replace(/,/g, ''));
+             if (amount > 0) {
+               console.log(`💰 Net sales found in table row: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+               return amount;
+             }
+           }
+         } catch (e) {
+           console.log(`⚠️  Error reading table cell: ${e.message}`);
+         }
+       }
+     } catch (e) {
+       console.log('❌ Table cell approach failed:', e.message);
+     }
+     
      // Strategy 2: Look for any element containing "Net Sales" and a dollar amount
      try {
        const netSalesElements = await page.locator('*').filter({ hasText: /Net Sales.*\$[\d,]+\.\d+/ }).all();
@@ -354,7 +386,88 @@ async function scrapeNetSales(store, browser, collectionTime) {
        console.log('❌ Page content search failed:', e.message);
      }
      
+     // Strategy 4: Look for net sales in various text formats and positions
+     try {
+       console.log('🔍 Looking for net sales in various text formats...');
+       
+       // Look for any text containing "Net Sales" and a dollar amount
+       const allElements = await page.locator('*').filter({ hasText: /Net Sales/i }).all();
+       console.log(`🔍 Found ${allElements.length} elements containing "Net Sales"`);
+       
+       for (const element of allElements) {
+         try {
+           const text = await element.textContent();
+           console.log(`📄 Checking element text: ${text.substring(0, 150)}...`);
+           
+           // Look for dollar amounts in the text
+           const matches = text.match(/\$([\d,]+\.\d+)/g);
+           if (matches) {
+             console.log(`💰 Found dollar amounts: ${matches.join(', ')}`);
+             
+             // Try to find the one that's most likely net sales
+             for (const match of matches) {
+               const amount = parseFloat(match.replace(/[$,]/g, ''));
+               if (amount > 0) {
+                 console.log(`💰 Potential net sales amount: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                 
+                 // If this element contains "Net Sales" and has a non-zero amount, it's likely correct
+                 if (text.toLowerCase().includes('net sales') && amount > 0) {
+                   console.log(`💰 Net sales confirmed: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                   return amount;
+                 }
+               }
+             }
+           }
+         } catch (e) {
+           console.log(`⚠️  Error reading element: ${e.message}`);
+         }
+       }
+     } catch (e) {
+       console.log('❌ Comprehensive text search failed:', e.message);
+     }
+     
+     // Strategy 5: Wait a bit more and try again (sometimes data loads after report generation)
+     try {
+       console.log('⏳ Waiting for data to load and trying again...');
+       await page.waitForTimeout(3000);
+       
+       // Try the summary items approach again
+       const summaryItemsRetry = await page.locator('.summary-item').filter({ hasText: /Net Sales/ }).all();
+       console.log(`🔍 Retry: Found ${summaryItemsRetry.length} summary items with Net Sales`);
+       
+       if (summaryItemsRetry.length > 0) {
+         const lastItem = summaryItemsRetry[summaryItemsRetry.length - 1];
+         const text = await lastItem.textContent();
+         console.log(`📊 Retry checking: ${text}`);
+         
+         const match = text.match(/\$([\d,]+\.\d+)/);
+         if (match) {
+           const amount = parseFloat(match[1].replace(/,/g, ''));
+           console.log(`💰 Net sales found on retry: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+           return amount;
+         }
+       }
+     } catch (e) {
+       console.log('❌ Retry approach failed:', e.message);
+     }
+     
      console.log('❌ Net sales not found on page');
+     
+     // Debug: Save page content and screenshot for troubleshooting
+     try {
+       console.log('📸 Taking debug screenshot...');
+       await page.screenshot({ path: `debug-${store.name}-${Date.now()}.png`, fullPage: true });
+       
+       console.log('📄 Saving page content for debugging...');
+       const pageContent = await page.content();
+       fs.writeFileSync(`debug-${store.name}-${Date.now()}.html`, pageContent);
+       
+       console.log('🔍 Final page title:', await page.title());
+       console.log('🔍 Final URL:', page.url());
+     } catch (e) {
+       console.log('⚠️ Debug capture failed:', e.message);
+     }
+     
      return 0;
     
   } catch (error) {
