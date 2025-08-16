@@ -419,113 +419,121 @@ async function setDateForCSVDownload(page, targetDate) {
 
 async function downloadCSV(page, storeName, targetDate) {
   try {
-    console.log('🔍 Looking for CSV download button with multiple strategies...');
+    console.log('🔍 Looking for three dots menu (⋮) in upper right corner...');
     
-    // Strategy 1: Look for specific Treez portal download elements
-    let downloadButton = await page.locator('button, [role="button"], a, .download-btn, .export-btn').filter({ hasText: /download|export|csv|export to csv|download csv/i }).first();
+    // Strategy 1: Look for the specific "more-btn" element (three dots menu)
+    let threeDotsMenu = await page.locator('#more-btn, [id*="more"], [id*="btn"], .more-btn, .more-button').first();
     
-    // Strategy 2: Look for any button with download-related text
-    if (!downloadButton || !(await downloadButton.isVisible())) {
-      downloadButton = await page.locator('button, [role="button"], a').filter({ hasText: /download|export|csv|save|get data|export data/i }).first();
+    // Strategy 2: Look for any element with "more" in the ID or class
+    if (!threeDotsMenu || !(await threeDotsMenu.isVisible())) {
+      threeDotsMenu = await page.locator('[id*="more"], [class*="more"], [id*="btn"], [class*="btn"]').first();
     }
     
-    // Strategy 3: Look for any clickable element that might be for downloading
-    if (!downloadButton || !(await downloadButton.isVisible())) {
-      downloadButton = await page.locator('[onclick*="download"], [onclick*="export"], [href*=".csv"], [data-action*="download"], [data-action*="export"]').first();
-    }
-    
-    // Strategy 4: Look for any element with download-related classes or IDs
-    if (!downloadButton || !(await downloadButton.isVisible())) {
-      downloadButton = await page.locator('.download, .export, .csv-download, .data-export, #download, #export, .export-button, .export-csv-button, .inner-export-button').first();
-    }
-    
-    if (await downloadButton.isVisible()) {
-      console.log('✅ Found download button');
+    // Strategy 3: Look for any clickable element that might be the three dots menu
+    if (!threeDotsMenu || !(await threeDotsMenu.isVisible())) {
+      const potentialMoreButtons = await page.locator('button, [role="button"], a, div').filter({ hasText: /more|⋮|⋯|\.\.\.|menu|options/i }).all();
+      console.log(`🔍 Found ${potentialMoreButtons.length} potential more/menu elements`);
       
-      // Set up download listener
-      const downloadPromise = page.waitForEvent('download');
-      await downloadButton.click();
-      
-      const download = await downloadPromise;
-      const suggestedFilename = download.suggestedFilename();
-      const downloadPath = path.join(__dirname, `${storeName}-${targetDate.toISOString().split('T')[0]}.csv`);
-      
-      await download.saveAs(downloadPath);
-      console.log(`📥 CSV downloaded: ${downloadPath}`);
-      
-      return downloadPath;
-    }
-    
-    // Strategy 5: Look for any element that might trigger a download
-    console.log('🔍 Looking for alternative download methods...');
-    
-    // Try clicking on any element that might have download functionality
-    const potentialDownloadElements = await page.locator('*').filter({ hasText: /download|export|csv|save|get data|export data|get csv|download data/i }).all();
-    console.log(`🔍 Found ${potentialDownloadElements.length} potential download elements`);
-    
-    for (const element of potentialDownloadElements) {
-      try {
-        const text = await element.textContent();
-        console.log(`📄 Checking element: "${text.substring(0, 100)}..."`);
-        
-        if (await element.isVisible()) {
-          console.log('🔄 Trying to click potential download element...');
-          const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
-          await element.click();
+      for (const element of potentialMoreButtons) {
+        try {
+          const text = await element.textContent();
+          const tagName = await element.evaluate(el => el.tagName);
+          const className = await element.evaluate(el => el.className);
+          const id = await element.evaluate(el => el.id);
+          console.log(`🔍 More element: <${tagName}> id="${id}" class="${className}" text="${text}"`);
           
-          try {
-            const download = await downloadPromise;
-            const downloadPath = path.join(__dirname, `${storeName}-${targetDate.toISOString().split('T')[0]}.csv`);
-            await download.saveAs(downloadPath);
-            console.log(`📥 CSV downloaded via alternative method: ${downloadPath}`);
-            return downloadPath;
-          } catch (e) {
-            console.log('⚠️ No download triggered, trying next element...');
+          // Look for elements that might be the three dots menu
+          if (id.includes('more') || id.includes('btn') || 
+              className.includes('more') || className.includes('btn') ||
+              text.includes('⋮') || text.includes('⋯') || text.includes('...') || 
+              text.toLowerCase().includes('more') || text.toLowerCase().includes('menu') || 
+              text.toLowerCase().includes('options')) {
+            threeDotsMenu = element;
+            console.log('✅ Found potential three dots menu');
+            break;
           }
+        } catch (e) {
+          console.log('⚠️ Error reading element:', e.message);
         }
-      } catch (e) {
-        console.log('⚠️ Error with element:', e.message);
       }
     }
     
-    // Strategy 6: Look for any clickable element that might be hidden or have different text
-    console.log('🔍 Looking for any clickable elements that might be download buttons...');
-    const allClickableElements = await page.locator('button, [role="button"], a, input[type="button"], input[type="submit"]').all();
-    console.log(`🔍 Found ${allClickableElements.length} total clickable elements`);
-    
-    for (let i = 0; i < Math.min(allClickableElements.length, 20); i++) {
-      try {
-        const element = allClickableElements[i];
-        const text = await element.textContent();
-        const tagName = await element.evaluate(el => el.tagName);
-        const className = await element.evaluate(el => el.className);
+    if (threeDotsMenu && await threeDotsMenu.isVisible()) {
+      console.log('✅ Found three dots menu, clicking to open...');
+      
+      // Click the three dots menu to open the dropdown
+      await threeDotsMenu.click();
+      await page.waitForTimeout(2000);
+      
+      // Look for download/export options in the opened menu
+      console.log('🔍 Looking for download/export options in the menu...');
+      
+      // Strategy 1: Look for download/export text in the menu
+      let downloadOption = await page.locator('button, [role="button"], a, .menu-item, .dropdown-item, .option').filter({ hasText: /download|export|csv|export to csv|download csv|get data|export data/i }).first();
+      
+      // Strategy 2: Look for any menu item that might be for downloading
+      if (!downloadOption || !(await downloadOption.isVisible())) {
+        downloadOption = await page.locator('.menu-item, .dropdown-item, .option, [role="menuitem"], [role="option"]').filter({ hasText: /download|export|csv|save|get data|export data|get csv|download data/i }).first();
+      }
+      
+      if (downloadOption && await downloadOption.isVisible()) {
+        console.log('✅ Found download option in menu');
         
-        // Skip elements that are clearly not download buttons
-        if (text.toLowerCase().includes('generate') || text.toLowerCase().includes('submit') || text.toLowerCase().includes('login')) {
-          continue;
-        }
+        // Set up download listener
+        const downloadPromise = page.waitForEvent('download');
+        await downloadOption.click();
         
-        if (await element.isVisible()) {
-          console.log(`🔄 Trying element ${i + 1}: <${tagName}> "${text}" class="${className}"`);
-          const downloadPromise = page.waitForEvent('download', { timeout: 3000 });
-          await element.click();
-          
+        const download = await downloadPromise;
+        const suggestedFilename = download.suggestedFilename();
+        const downloadPath = path.join(__dirname, `${storeName}-${targetDate.toISOString().split('T')[0]}.csv`);
+        
+        await download.saveAs(downloadPath);
+        console.log(`📥 CSV downloaded: ${downloadPath}`);
+        
+        return downloadPath;
+      } else {
+        console.log('❌ Download option not found in the three dots menu');
+        
+        // Debug: Show what options are available in the menu
+        const menuItems = await page.locator('.menu-item, .dropdown-item, .option, [role="menuitem"], [role="option"]').all();
+        console.log(`🔍 Found ${menuItems.length} menu items`);
+        
+        for (let i = 0; i < Math.min(menuItems.length, 10); i++) {
           try {
-            const download = await downloadPromise;
-            const downloadPath = path.join(__dirname, `${storeName}-${targetDate.toISOString().split('T')[0]}.csv`);
-            await download.saveAs(downloadPath);
-            console.log(`📥 CSV downloaded via clickable element: ${downloadPath}`);
-            return downloadPath;
+            const item = menuItems[i];
+            const text = await item.textContent();
+            const tagName = await item.evaluate(el => el.tagName);
+            const className = await item.evaluate(el => el.className);
+            console.log(`🔍 Menu item ${i + 1}: <${tagName}> "${text}" class="${className}"`);
           } catch (e) {
-            console.log('⚠️ No download triggered, trying next element...');
+            console.log(`🔍 Menu item ${i + 1}: Error reading - ${e.message}`);
           }
         }
-      } catch (e) {
-        console.log(`⚠️ Error with element ${i + 1}:`, e.message);
+      }
+    } else {
+      console.log('❌ Three dots menu not found');
+      
+      // Fallback: Look for any download/export buttons that might exist
+      console.log('🔍 Falling back to looking for direct download buttons...');
+      let downloadButton = await page.locator('button, [role="button"], a').filter({ hasText: /download|export|csv|export to csv|download csv/i }).first();
+      
+      if (downloadButton && await downloadButton.isVisible()) {
+        console.log('✅ Found fallback download button');
+        
+        const downloadPromise = page.waitForEvent('download');
+        await downloadButton.click();
+        
+        const download = await downloadPromise;
+        const downloadPath = path.join(__dirname, `${storeName}-${targetDate.toISOString().split('T')[0]}.csv`);
+        
+        await download.saveAs(downloadPath);
+        console.log(`📥 CSV downloaded via fallback: ${downloadPath}`);
+        
+        return downloadPath;
       }
     }
     
-    console.log('❌ Download button not found after trying all strategies');
+    console.log('❌ Download option not found after trying all strategies');
     return null;
     
   } catch (error) {
