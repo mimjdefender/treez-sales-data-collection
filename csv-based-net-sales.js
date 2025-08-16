@@ -98,19 +98,10 @@ function calculateTargetDate() {
   console.log(`🌍 UTC Date: ${utcYear}-${(utcMonth + 1).toString().padStart(2, '0')}-${utcDate.toString().padStart(2, '0')}`);
   console.log(`🇺🇸 EST Date: ${estYear}-${(estMonth + 1).toString().padStart(2, '0')}-${estDay.toString().padStart(2, '0')}`);
   
-  // If UTC is next day but EST is not, download previous day
-  // If both UTC and EST are same day, download current day
-  if (utcDate > estDay || (utcDate === 1 && estDay > 1)) {
-    // UTC is ahead, download previous day in EST
-    const previousDay = new Date(estDate);
-    previousDay.setDate(previousDay.getDate() - 1);
-    console.log(`📅 Downloading previous day CSV (UTC ahead of EST)`);
-    return previousDay;
-  } else {
-    // Same day, download current day
-    console.log(`📅 Downloading current day CSV (UTC and EST same day)`);
-    return estDate;
-  }
+  // Always use the current EST date for CSV download
+  // This ensures we get the most recent data for the business day in EST
+  console.log(`📅 Downloading current EST date CSV (${estYear}-${(estMonth + 1).toString().padStart(2, '0')}-${estDay.toString().padStart(2, '0')})`);
+  return estDate;
 }
 
 async function downloadCSVAndCalculateNetSales(store, browser, targetDate, collectionTime) {
@@ -149,6 +140,10 @@ async function downloadCSVAndCalculateNetSales(store, browser, targetDate, colle
     // Download CSV
     console.log('📥 Downloading CSV file...');
     
+    // Wait a bit more for export buttons to appear after report generation
+    console.log('⏳ Waiting for export buttons to appear...');
+    await page.waitForTimeout(3000);
+    
     // Debug: Take screenshot and save page content to see what's available
     try {
       console.log('📸 Taking debug screenshot...');
@@ -174,6 +169,22 @@ async function downloadCSVAndCalculateNetSales(store, browser, targetDate, colle
           console.log(`🔍 Button ${i + 1}: <${tagName}> "${text}" class="${className}"`);
         } catch (e) {
           console.log(`🔍 Button ${i + 1}: Error reading - ${e.message}`);
+        }
+      }
+      
+      // Specifically look for export buttons
+      const exportButtons = await page.locator('.export-button, .export-csv-button, .inner-export-button, [class*="export"]').all();
+      console.log(`🔍 Found ${exportButtons.length} export-related elements`);
+      
+      for (let i = 0; i < exportButtons.length; i++) {
+        try {
+          const button = exportButtons[i];
+          const text = await button.textContent();
+          const tagName = await button.evaluate(el => el.tagName);
+          const className = await button.evaluate(el => el.className);
+          console.log(`🔍 Export element ${i + 1}: <${tagName}> "${text}" class="${className}"`);
+        } catch (e) {
+          console.log(`🔍 Export element ${i + 1}: Error reading - ${e.message}`);
         }
       }
     } catch (e) {
@@ -276,16 +287,28 @@ async function generateReport(page) {
     
     if (generateButton && await generateButton.isVisible()) {
       console.log('📊 Generating report...');
-      await generateButton.click();
+      
+      // Try to handle any overlay that might be blocking the click
+      try {
+        // Wait for any overlay to disappear or try to click through it
+        await page.waitForTimeout(1000);
+        
+        // Try clicking with force if there's an overlay
+        await generateButton.click({ force: true });
+        console.log('✅ Generate Report button clicked (with force)');
+      } catch (e) {
+        console.log('⚠️ Force click failed, trying normal click:', e.message);
+        await generateButton.click();
+      }
       
       // Wait longer for GitHub Actions environment
-      const reportWaitTime = process.env.GITHUB_ACTIONS ? 10000 : 5000;
+      const reportWaitTime = process.env.GITHUB_ACTIONS ? 15000 : 8000;
       console.log(`⏳ Waiting ${reportWaitTime}ms for report to generate...`);
       await page.waitForTimeout(reportWaitTime);
       
       // Additional wait for data to load
       console.log('⏳ Waiting for data to load...');
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(5000);
       
       console.log('✅ Report generated');
     } else {
@@ -413,7 +436,7 @@ async function downloadCSV(page, storeName, targetDate) {
     
     // Strategy 4: Look for any element with download-related classes or IDs
     if (!downloadButton || !(await downloadButton.isVisible())) {
-      downloadButton = await page.locator('.download, .export, .csv-download, .data-export, #download, #export').first();
+      downloadButton = await page.locator('.download, .export, .csv-download, .data-export, #download, #export, .export-button, .export-csv-button, .inner-export-button').first();
     }
     
     if (await downloadButton.isVisible()) {
