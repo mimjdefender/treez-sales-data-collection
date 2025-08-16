@@ -98,10 +98,13 @@ function calculateTargetDate() {
   console.log(`🌍 UTC Date: ${utcYear}-${(utcMonth + 1).toString().padStart(2, '0')}-${utcDate.toString().padStart(2, '0')}`);
   console.log(`🇺🇸 EST Date: ${estYear}-${(estMonth + 1).toString().padStart(2, '0')}-${estDay.toString().padStart(2, '0')}`);
   
-  // Always use the current EST date for CSV download
-  // This ensures we get the most recent data for the business day in EST
-  console.log(`📅 Downloading current EST date CSV (${estYear}-${(estMonth + 1).toString().padStart(2, '0')}-${estDay.toString().padStart(2, '0')})`);
-  return estDate;
+  // Use yesterday's EST date for CSV download to ensure we get complete data
+  // Current day reports might not be available yet or might be empty
+  const yesterday = new Date(estDate);
+  yesterday.setDate(yesterday.getDate() - 1);
+  console.log(`📅 Downloading yesterday's EST date CSV (${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')})`);
+  
+  return yesterday;
 }
 
 async function downloadCSVAndCalculateNetSales(store, browser, targetDate, collectionTime) {
@@ -321,93 +324,79 @@ async function generateReport(page) {
 
 async function setDateForCSVDownload(page, targetDate) {
   try {
-    console.log('🔍 Looking for date picker with multiple strategies...');
+    console.log('🔍 Looking for date picker using recording steps...');
     
-    // Strategy 1: Look for date input field
+    // Strategy 1: Look for the date filter container (as shown in recording)
+    let dateFilterContainer = await page.locator('div.filter-boxes-container > div:nth-of-type(1) > div > div > div').first();
+    
+    if (!dateFilterContainer || !(await dateFilterContainer.isVisible())) {
+      // Strategy 2: Look for any element with date text
+      dateFilterContainer = await page.locator('*').filter({ hasText: /\d{2}\/\d{2}\/\d{4}/ }).first();
+    }
+    
+    if (dateFilterContainer && await dateFilterContainer.isVisible()) {
+      console.log('✅ Found date filter container, clicking to open...');
+      
+      // Click to open the date picker (as shown in recording)
+      await dateFilterContainer.click();
+      await page.waitForTimeout(1000);
+      
+      // Look for the date span to double-click (as shown in recording)
+      let dateSpan = await page.locator('span.right-span-selected > span').first();
+      
+      if (!dateSpan || !(await dateSpan.isVisible())) {
+        // Alternative: look for any span with date text
+        dateSpan = await page.locator('span').filter({ hasText: /\d{2}\/\d{2}\/\d{4}/ }).first();
+      }
+      
+      if (dateSpan && await dateSpan.isVisible()) {
+        console.log('✅ Found date span, double-clicking to open date picker...');
+        
+        // Double-click to open the date picker (as shown in recording)
+        await dateSpan.dblclick();
+        await page.waitForTimeout(2000);
+        
+        // Look for the overlay to click (as shown in recording)
+        let overlay = await page.locator('div.filter-boxes-container div.overlay').first();
+        
+        if (!overlay || !(await overlay.isVisible())) {
+          // Alternative: look for any overlay or date picker element
+          overlay = await page.locator('div.overlay, .date-picker, .calendar-overlay, [class*="overlay"]').first();
+        }
+        
+        if (overlay && await overlay.isVisible()) {
+          console.log('✅ Found overlay, clicking to set date...');
+          
+          // Click on the overlay to set the date (as shown in recording)
+          await overlay.click();
+          await page.waitForTimeout(1000);
+          
+          console.log('✅ Date picker interaction completed');
+          return;
+        } else {
+          console.log('⚠️ Overlay not found after double-clicking date span');
+        }
+      } else {
+        console.log('⚠️ Date span not found for double-click');
+      }
+    }
+    
+    // Fallback: Try the original strategies if the recording approach fails
+    console.log('🔍 Falling back to original date setting strategies...');
+    
+    // Strategy 3: Look for date input field
     let dateInput = await page.locator('input[type="date"], input[name*="date"], input[id*="date"]').first();
     if (!dateInput || !(await dateInput.isVisible())) {
-      // Strategy 2: Look for any input that might be a date
       dateInput = await page.locator('input').filter({ hasText: /date|calendar/i }).first();
-    }
-    if (!dateInput || !(await dateInput.isVisible())) {
-      // Strategy 3: Look for any input with date-related attributes
-      dateInput = await page.locator('input[placeholder*="date"], input[placeholder*="Date"], input[aria-label*="date"]').first();
     }
     
     if (dateInput && await dateInput.isVisible()) {
-      console.log('✅ Found date input field');
+      console.log('✅ Found date input field (fallback)');
       const dateString = targetDate.toISOString().split('T')[0];
       await dateInput.fill(dateString);
       console.log(`📅 Set date to ${dateString}`);
       await page.waitForTimeout(1000);
       return;
-    }
-    
-    // Strategy 4: Look for date picker button or calendar icon
-    let dateButton = await page.locator('button[aria-label*="date"], button[title*="date"], [role="button"]').filter({ hasText: /date|calendar/i }).first();
-    if (!dateButton || !(await dateButton.isVisible())) {
-      // Strategy 5: Look for any clickable element with date/calendar text
-      dateButton = await page.locator('button, [role="button"], a, .date-picker, .calendar-btn').filter({ hasText: /date|calendar|pick date|select date/i }).first();
-    }
-    if (!dateButton || !(await dateButton.isVisible())) {
-      // Strategy 6: Look for any element that might be a date picker
-      dateButton = await page.locator('[onclick*="date"], [onclick*="calendar"], .date-input, .date-field').first();
-    }
-    
-    if (dateButton && await dateButton.isVisible()) {
-      console.log('✅ Found date picker button');
-      await dateButton.click();
-      await page.waitForTimeout(2000);
-      
-      // Try to set the date in the opened picker
-      const dateString = targetDate.toISOString().split('T')[0];
-      console.log(`📅 Attempting to set date to ${dateString}`);
-      
-      // Look for date input in the opened picker
-      const pickerDateInput = await page.locator('input[type="date"], input[name*="date"], input[type="text"]').filter({ hasText: /^\d{4}-\d{2}-\d{2}$/ }).first();
-      if (pickerDateInput && await pickerDateInput.isVisible()) {
-        await pickerDateInput.fill(dateString);
-        console.log(`📅 Set date in picker to ${dateString}`);
-      }
-      
-      // Look for a "Done" or "OK" button to close the picker
-      const doneButton = await page.locator('button, [role="button"]').filter({ hasText: /done|ok|apply|close|select/i }).first();
-      if (doneButton && await doneButton.isVisible()) {
-        await doneButton.click();
-        console.log('✅ Closed date picker');
-      }
-      
-      await page.waitForTimeout(1000);
-      return;
-    }
-    
-    // Strategy 7: Try to find and click on any element that might set the date
-    console.log('🔍 Looking for alternative date setting methods...');
-    const allElements = await page.locator('*').filter({ hasText: /date|calendar|pick|select/i }).all();
-    console.log(`🔍 Found ${allElements.length} elements with date-related text`);
-    
-    for (const element of allElements) {
-      try {
-        const text = await element.textContent();
-        console.log(`📄 Checking element: "${text.substring(0, 50)}..."`);
-        
-        if (await element.isVisible()) {
-          console.log('🔄 Trying to interact with date element...');
-          await element.click();
-          await page.waitForTimeout(1000);
-          
-          // Try to set the date if a picker opened
-          const dateString = targetDate.toISOString().split('T')[0];
-          const anyDateInput = await page.locator('input[type="date"], input[type="text"]').first();
-          if (anyDateInput && await anyDateInput.isVisible()) {
-            await anyDateInput.fill(dateString);
-            console.log(`📅 Set date to ${dateString}`);
-            return;
-          }
-        }
-      } catch (e) {
-        console.log('⚠️ Error with date element:', e.message);
-      }
     }
     
     console.log('⚠️ Date picker not found, proceeding with default date');
@@ -419,65 +408,41 @@ async function setDateForCSVDownload(page, targetDate) {
 
 async function downloadCSV(page, storeName, targetDate) {
   try {
-    console.log('🔍 Looking for three dots menu (⋮) in upper right corner...');
+    console.log('🔍 Looking for three dots menu (⋮) using recording steps...');
     
-    // Strategy 1: Look for the specific "more-btn" element (three dots menu)
-    let threeDotsMenu = await page.locator('#more-btn, [id*="more"], [id*="btn"], .more-btn, .more-button').first();
+    // Strategy 1: Look for the specific "more-btn" element (as shown in recording)
+    let threeDotsMenu = await page.locator('#more-btn').first();
     
-    // Strategy 2: Look for any element with "more" in the ID or class
     if (!threeDotsMenu || !(await threeDotsMenu.isVisible())) {
-      threeDotsMenu = await page.locator('[id*="more"], [class*="more"], [id*="btn"], [class*="btn"]').first();
+      // Strategy 2: Look for any element with "more" in the ID
+      threeDotsMenu = await page.locator('[id*="more"], [id*="btn"]').first();
     }
     
-    // Strategy 3: Look for any clickable element that might be the three dots menu
     if (!threeDotsMenu || !(await threeDotsMenu.isVisible())) {
-      const potentialMoreButtons = await page.locator('button, [role="button"], a, div').filter({ hasText: /more|⋮|⋯|\.\.\.|menu|options/i }).all();
-      console.log(`🔍 Found ${potentialMoreButtons.length} potential more/menu elements`);
-      
-      for (const element of potentialMoreButtons) {
-        try {
-          const text = await element.textContent();
-          const tagName = await element.evaluate(el => el.tagName);
-          const className = await element.evaluate(el => el.className);
-          const id = await element.evaluate(el => el.id);
-          console.log(`🔍 More element: <${tagName}> id="${id}" class="${className}" text="${text}"`);
-          
-          // Look for elements that might be the three dots menu
-          if (id.includes('more') || id.includes('btn') || 
-              className.includes('more') || className.includes('btn') ||
-              text.includes('⋮') || text.includes('⋯') || text.includes('...') || 
-              text.toLowerCase().includes('more') || text.toLowerCase().includes('menu') || 
-              text.toLowerCase().includes('options')) {
-            threeDotsMenu = element;
-            console.log('✅ Found potential three dots menu');
-            break;
-          }
-        } catch (e) {
-          console.log('⚠️ Error reading element:', e.message);
-        }
-      }
+      // Strategy 3: Look for any element with "more" in the class
+      threeDotsMenu = await page.locator('[class*="more"], [class*="btn"]').first();
     }
     
     if (threeDotsMenu && await threeDotsMenu.isVisible()) {
       console.log('✅ Found three dots menu, clicking to open...');
       
-      // Click the three dots menu to open the dropdown
+      // Click the three dots menu to open the dropdown (as shown in recording)
       await threeDotsMenu.click();
       await page.waitForTimeout(2000);
       
-      // Look for download/export options in the opened menu
-      console.log('🔍 Looking for download/export options in the menu...');
+      // Look for "CSV Export" option in the opened menu (as shown in recording)
+      console.log('🔍 Looking for CSV Export option in the menu...');
       
-      // Strategy 1: Look for download/export text in the menu
-      let downloadOption = await page.locator('button, [role="button"], a, .menu-item, .dropdown-item, .option').filter({ hasText: /download|export|csv|export to csv|download csv|get data|export data/i }).first();
+      // Strategy 1: Look for "CSV Export" text (exact match from recording)
+      let downloadOption = await page.locator('*').filter({ hasText: /CSV Export/i }).first();
       
-      // Strategy 2: Look for any menu item that might be for downloading
+      // Strategy 2: Look for any element with export/download text
       if (!downloadOption || !(await downloadOption.isVisible())) {
-        downloadOption = await page.locator('.menu-item, .dropdown-item, .option, [role="menuitem"], [role="option"]').filter({ hasText: /download|export|csv|save|get data|export data|get csv|download data/i }).first();
+        downloadOption = await page.locator('button, [role="button"], a, div').filter({ hasText: /export|csv|download/i }).first();
       }
       
       if (downloadOption && await downloadOption.isVisible()) {
-        console.log('✅ Found download option in menu');
+        console.log('✅ Found CSV Export option in menu');
         
         // Set up download listener
         const downloadPromise = page.waitForEvent('download');
@@ -492,11 +457,11 @@ async function downloadCSV(page, storeName, targetDate) {
         
         return downloadPath;
       } else {
-        console.log('❌ Download option not found in the three dots menu');
+        console.log('❌ CSV Export option not found in the three dots menu');
         
         // Debug: Show what options are available in the menu
-        const menuItems = await page.locator('.menu-item, .dropdown-item, .option, [role="menuitem"], [role="option"]').all();
-        console.log(`🔍 Found ${menuItems.length} menu items`);
+        const menuItems = await page.locator('*').filter({ hasText: /export|csv|download|menu|option/i }).all();
+        console.log(`🔍 Found ${menuItems.length} potential menu items`);
         
         for (let i = 0; i < Math.min(menuItems.length, 10); i++) {
           try {
