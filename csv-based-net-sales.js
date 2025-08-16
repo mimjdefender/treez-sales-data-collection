@@ -183,20 +183,8 @@ async function downloadCSVAndCalculateNetSales(store, browser, targetDate, colle
     const csvFilePath = await downloadCSV(page, store.name, targetDate);
     
     if (!csvFilePath) {
-      console.log('❌ CSV download failed, trying page scraping as fallback...');
-      
-      // Fallback: Try to extract net sales from the page (like the working local version)
-      try {
-        console.log('🔍 Attempting to extract net sales from page content...');
-        const netSales = await extractNetSalesFromPage(page);
-        if (netSales > 0) {
-          console.log(`💰 Net sales extracted from page: $${netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-          return netSales;
-        }
-      } catch (e) {
-        console.log('⚠️ Page scraping fallback failed:', e.message);
-      }
-      
+      console.log('❌ CSV download failed - this approach requires CSV download to work');
+      console.log('🔍 Check the debug files to see what elements are available on the page');
       return 0;
     }
     
@@ -310,30 +298,93 @@ async function generateReport(page) {
 
 async function setDateForCSVDownload(page, targetDate) {
   try {
-    // Look for date picker or date input
-    console.log('🔍 Looking for date picker...');
+    console.log('🔍 Looking for date picker with multiple strategies...');
     
-    // Try to find date input field
-    const dateInput = await page.locator('input[type="date"], input[name*="date"], input[id*="date"]').first();
-    if (await dateInput.isVisible()) {
+    // Strategy 1: Look for date input field
+    let dateInput = await page.locator('input[type="date"], input[name*="date"], input[id*="date"]').first();
+    if (!dateInput || !(await dateInput.isVisible())) {
+      // Strategy 2: Look for any input that might be a date
+      dateInput = await page.locator('input').filter({ hasText: /date|calendar/i }).first();
+    }
+    if (!dateInput || !(await dateInput.isVisible())) {
+      // Strategy 3: Look for any input with date-related attributes
+      dateInput = await page.locator('input[placeholder*="date"], input[placeholder*="Date"], input[aria-label*="date"]').first();
+    }
+    
+    if (dateInput && await dateInput.isVisible()) {
       console.log('✅ Found date input field');
       const dateString = targetDate.toISOString().split('T')[0];
       await dateInput.fill(dateString);
       console.log(`📅 Set date to ${dateString}`);
+      await page.waitForTimeout(1000);
       return;
     }
     
-    // Try to find date picker button
-    const dateButton = await page.locator('button[aria-label*="date"], button[title*="date"], [role="button"]').filter({ hasText: /date|calendar/i }).first();
-    if (await dateButton.isVisible()) {
+    // Strategy 4: Look for date picker button or calendar icon
+    let dateButton = await page.locator('button[aria-label*="date"], button[title*="date"], [role="button"]').filter({ hasText: /date|calendar/i }).first();
+    if (!dateButton || !(await dateButton.isVisible())) {
+      // Strategy 5: Look for any clickable element with date/calendar text
+      dateButton = await page.locator('button, [role="button"], a, .date-picker, .calendar-btn').filter({ hasText: /date|calendar|pick date|select date/i }).first();
+    }
+    if (!dateButton || !(await dateButton.isVisible())) {
+      // Strategy 6: Look for any element that might be a date picker
+      dateButton = await page.locator('[onclick*="date"], [onclick*="calendar"], .date-input, .date-field').first();
+    }
+    
+    if (dateButton && await dateButton.isVisible()) {
       console.log('✅ Found date picker button');
       await dateButton.click();
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(2000);
       
-      // Try to set the date
+      // Try to set the date in the opened picker
       const dateString = targetDate.toISOString().split('T')[0];
       console.log(`📅 Attempting to set date to ${dateString}`);
-      // This might need more complex logic depending on the date picker implementation
+      
+      // Look for date input in the opened picker
+      const pickerDateInput = await page.locator('input[type="date"], input[name*="date"], input[type="text"]').filter({ hasText: /^\d{4}-\d{2}-\d{2}$/ }).first();
+      if (pickerDateInput && await pickerDateInput.isVisible()) {
+        await pickerDateInput.fill(dateString);
+        console.log(`📅 Set date in picker to ${dateString}`);
+      }
+      
+      // Look for a "Done" or "OK" button to close the picker
+      const doneButton = await page.locator('button, [role="button"]').filter({ hasText: /done|ok|apply|close|select/i }).first();
+      if (doneButton && await doneButton.isVisible()) {
+        await doneButton.click();
+        console.log('✅ Closed date picker');
+      }
+      
+      await page.waitForTimeout(1000);
+      return;
+    }
+    
+    // Strategy 7: Try to find and click on any element that might set the date
+    console.log('🔍 Looking for alternative date setting methods...');
+    const allElements = await page.locator('*').filter({ hasText: /date|calendar|pick|select/i }).all();
+    console.log(`🔍 Found ${allElements.length} elements with date-related text`);
+    
+    for (const element of allElements) {
+      try {
+        const text = await element.textContent();
+        console.log(`📄 Checking element: "${text.substring(0, 50)}..."`);
+        
+        if (await element.isVisible()) {
+          console.log('🔄 Trying to interact with date element...');
+          await element.click();
+          await page.waitForTimeout(1000);
+          
+          // Try to set the date if a picker opened
+          const dateString = targetDate.toISOString().split('T')[0];
+          const anyDateInput = await page.locator('input[type="date"], input[type="text"]').first();
+          if (anyDateInput && await anyDateInput.isVisible()) {
+            await anyDateInput.fill(dateString);
+            console.log(`📅 Set date to ${dateString}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ Error with date element:', e.message);
+      }
     }
     
     console.log('⚠️ Date picker not found, proceeding with default date');
@@ -345,20 +396,24 @@ async function setDateForCSVDownload(page, targetDate) {
 
 async function downloadCSV(page, storeName, targetDate) {
   try {
-    // Look for download or export button
-    console.log('🔍 Looking for CSV download button...');
+    console.log('🔍 Looking for CSV download button with multiple strategies...');
     
     // Strategy 1: Look for specific Treez portal download elements
     let downloadButton = await page.locator('button, [role="button"], a, .download-btn, .export-btn').filter({ hasText: /download|export|csv|export to csv|download csv/i }).first();
     
     // Strategy 2: Look for any button with download-related text
     if (!downloadButton || !(await downloadButton.isVisible())) {
-      downloadButton = await page.locator('button, [role="button"], a').filter({ hasText: /download|export|csv|save|get data/i }).first();
+      downloadButton = await page.locator('button, [role="button"], a').filter({ hasText: /download|export|csv|save|get data|export data/i }).first();
     }
     
     // Strategy 3: Look for any clickable element that might be for downloading
     if (!downloadButton || !(await downloadButton.isVisible())) {
-      downloadButton = await page.locator('[onclick*="download"], [onclick*="export"], [href*=".csv"]').first();
+      downloadButton = await page.locator('[onclick*="download"], [onclick*="export"], [href*=".csv"], [data-action*="download"], [data-action*="export"]').first();
+    }
+    
+    // Strategy 4: Look for any element with download-related classes or IDs
+    if (!downloadButton || !(await downloadButton.isVisible())) {
+      downloadButton = await page.locator('.download, .export, .csv-download, .data-export, #download, #export').first();
     }
     
     if (await downloadButton.isVisible()) {
@@ -378,17 +433,17 @@ async function downloadCSV(page, storeName, targetDate) {
       return downloadPath;
     }
     
-    // Strategy 4: Look for any element that might trigger a download
+    // Strategy 5: Look for any element that might trigger a download
     console.log('🔍 Looking for alternative download methods...');
     
     // Try clicking on any element that might have download functionality
-    const potentialDownloadElements = await page.locator('*').filter({ hasText: /download|export|csv|save|get data/i }).all();
+    const potentialDownloadElements = await page.locator('*').filter({ hasText: /download|export|csv|save|get data|export data|get csv|download data/i }).all();
     console.log(`🔍 Found ${potentialDownloadElements.length} potential download elements`);
     
     for (const element of potentialDownloadElements) {
       try {
         const text = await element.textContent();
-        console.log(`📄 Checking element: ${text.substring(0, 100)}...`);
+        console.log(`📄 Checking element: "${text.substring(0, 100)}..."`);
         
         if (await element.isVisible()) {
           console.log('🔄 Trying to click potential download element...');
@@ -410,7 +465,44 @@ async function downloadCSV(page, storeName, targetDate) {
       }
     }
     
-    console.log('❌ Download button not found');
+    // Strategy 6: Look for any clickable element that might be hidden or have different text
+    console.log('🔍 Looking for any clickable elements that might be download buttons...');
+    const allClickableElements = await page.locator('button, [role="button"], a, input[type="button"], input[type="submit"]').all();
+    console.log(`🔍 Found ${allClickableElements.length} total clickable elements`);
+    
+    for (let i = 0; i < Math.min(allClickableElements.length, 20); i++) {
+      try {
+        const element = allClickableElements[i];
+        const text = await element.textContent();
+        const tagName = await element.evaluate(el => el.tagName);
+        const className = await element.evaluate(el => el.className);
+        
+        // Skip elements that are clearly not download buttons
+        if (text.toLowerCase().includes('generate') || text.toLowerCase().includes('submit') || text.toLowerCase().includes('login')) {
+          continue;
+        }
+        
+        if (await element.isVisible()) {
+          console.log(`🔄 Trying element ${i + 1}: <${tagName}> "${text}" class="${className}"`);
+          const downloadPromise = page.waitForEvent('download', { timeout: 3000 });
+          await element.click();
+          
+          try {
+            const download = await downloadPromise;
+            const downloadPath = path.join(__dirname, `${storeName}-${targetDate.toISOString().split('T')[0]}.csv`);
+            await download.saveAs(downloadPath);
+            console.log(`📥 CSV downloaded via clickable element: ${downloadPath}`);
+            return downloadPath;
+          } catch (e) {
+            console.log('⚠️ No download triggered, trying next element...');
+          }
+        }
+      } catch (e) {
+        console.log(`⚠️ Error with element ${i + 1}:`, e.message);
+      }
+    }
+    
+    console.log('❌ Download button not found after trying all strategies');
     return null;
     
   } catch (error) {
