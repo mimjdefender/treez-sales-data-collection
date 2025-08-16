@@ -148,10 +148,55 @@ async function downloadCSVAndCalculateNetSales(store, browser, targetDate, colle
     
     // Download CSV
     console.log('📥 Downloading CSV file...');
+    
+    // Debug: Take screenshot and save page content to see what's available
+    try {
+      console.log('📸 Taking debug screenshot...');
+      await page.screenshot({ path: `debug-${store.name}-${Date.now()}.png`, fullPage: true });
+      
+      console.log('📄 Saving page content for debugging...');
+      const pageContent = await page.content();
+      fs.writeFileSync(`debug-${store.name}-${Date.now()}.html`, pageContent);
+      
+      console.log('🔍 Final page title:', await page.title());
+      console.log('🔍 Final URL:', page.url());
+      
+      // Look for any buttons or clickable elements on the page
+      const allButtons = await page.locator('button, [role="button"], a, input[type="button"], input[type="submit"]').all();
+      console.log(`🔍 Found ${allButtons.length} total buttons/clickable elements`);
+      
+      for (let i = 0; i < Math.min(allButtons.length, 10); i++) {
+        try {
+          const button = allButtons[i];
+          const text = await button.textContent();
+          const tagName = await button.evaluate(el => el.tagName);
+          const className = await button.evaluate(el => el.className);
+          console.log(`🔍 Button ${i + 1}: <${tagName}> "${text}" class="${className}"`);
+        } catch (e) {
+          console.log(`🔍 Button ${i + 1}: Error reading - ${e.message}`);
+        }
+      }
+    } catch (e) {
+      console.log('⚠️ Debug capture failed:', e.message);
+    }
+    
     const csvFilePath = await downloadCSV(page, store.name, targetDate);
     
     if (!csvFilePath) {
-      console.log('❌ CSV download failed');
+      console.log('❌ CSV download failed, trying page scraping as fallback...');
+      
+      // Fallback: Try to extract net sales from the page (like the working local version)
+      try {
+        console.log('🔍 Attempting to extract net sales from page content...');
+        const netSales = await extractNetSalesFromPage(page);
+        if (netSales > 0) {
+          console.log(`💰 Net sales extracted from page: $${netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+          return netSales;
+        }
+      } catch (e) {
+        console.log('⚠️ Page scraping fallback failed:', e.message);
+      }
+      
       return 0;
     }
     
@@ -371,6 +416,105 @@ async function downloadCSV(page, storeName, targetDate) {
   } catch (error) {
     console.log('❌ CSV download failed:', error.message);
     return null;
+  }
+}
+
+async function extractNetSalesFromPage(page) {
+  try {
+    console.log('🔍 Extracting net sales from page...');
+    
+    // Strategy 1: Look for the summary item with net sales (most reliable)
+    try {
+      const summaryItems = await page.locator('.summary-item').filter({ hasText: /Net Sales/ }).all();
+      console.log(`🔍 Found ${summaryItems.length} summary items with Net Sales`);
+      
+      // Look for the one with actual dollar amounts (not $0.00)
+      for (const summaryItem of summaryItems) {
+        try {
+          const summaryText = await summaryItem.textContent();
+          console.log(`📊 Checking summary item: ${summaryText}`);
+          
+          const match = summaryText.match(/\$([\d,]+\.\d+)/);
+          if (match) {
+            const amount = parseFloat(match[1].replace(/,/g, ''));
+            
+            // Skip if it's $0.00 (probably old/empty data)
+            if (amount > 0) {
+              console.log(`💰 Net sales found in summary: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+              return amount;
+            } else {
+              console.log(`⚠️  Skipping $0.00 summary item (likely old/empty data)`);
+            }
+          }
+        } catch (e) {
+          console.log(`⚠️  Error reading summary item: ${e.message}`);
+        }
+      }
+      
+      // If no non-zero amounts found, try the last one (most recent)
+      if (summaryItems.length > 0) {
+        try {
+          const lastSummaryItem = summaryItems[summaryItems.length - 1];
+          const summaryText = await lastSummaryItem.textContent();
+          console.log(`📊 Trying last summary item: ${summaryText}`);
+          
+          const match = summaryText.match(/\$([\d,]+\.\d+)/);
+          if (match) {
+            const amount = parseFloat(match[1].replace(/,/g, ''));
+            console.log(`💰 Net sales found in last summary: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+            return amount;
+          }
+        } catch (e) {
+          console.log(`⚠️  Error reading last summary item: ${e.message}`);
+        }
+      }
+    } catch (e) {
+      console.log('❌ Summary item approach failed:', e.message);
+    }
+    
+    // Strategy 2: Look for any element containing "Net Sales" and a dollar amount
+    try {
+      const netSalesElements = await page.locator('*').filter({ hasText: /Net Sales.*\$[\d,]+\.\d+/ }).all();
+      console.log(`🔍 Found ${netSalesElements.length} elements with Net Sales and dollar amounts`);
+      
+      for (const element of netSalesElements) {
+        try {
+          const text = await element.textContent();
+          console.log(`📄 Checking element: ${text.substring(0, 100)}...`);
+          
+          const match = text.match(/\$([\d,]+\.\d+)/);
+          if (match) {
+            const amount = parseFloat(match[1].replace(/,/g, ''));
+            console.log(`💰 Net sales found: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+            return amount;
+          }
+        } catch (e) {
+          // Continue to next element
+        }
+      }
+    } catch (e) {
+      console.log('❌ Element search approach failed:', e.message);
+    }
+    
+    // Strategy 3: Look for any dollar amount near "Net Sales" text
+    try {
+      const pageContent = await page.content();
+      const netSalesMatch = pageContent.match(/Net Sales[^$]*\$([\d,]+\.\d+)/);
+      if (netSalesMatch) {
+        const amount = parseFloat(netSalesMatch[1].replace(/,/g, ''));
+        console.log(`💰 Net sales found in page content: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        return amount;
+      }
+    } catch (e) {
+      console.log('❌ Page content search failed:', e.message);
+    }
+    
+    console.log('❌ Net sales not found on page');
+    return 0;
+    
+  } catch (error) {
+    console.log('❌ Error extracting net sales from page:', error.message);
+    return 0;
   }
 }
 
