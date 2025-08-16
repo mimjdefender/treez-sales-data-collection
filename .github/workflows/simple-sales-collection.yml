@@ -1,7 +1,8 @@
-name: Simple Sales Data Collection
+name: CSV-Based Sales Data Collection
 
-# SIMPLIFIED WORKFLOW: Uses simple-net-sales.js which only scrapes net sales from the page
-# No CSV downloads, no complex fallbacks - just clean, focused functionality
+# CSV-BASED WORKFLOW: Downloads CSV files and calculates net revenue from them
+# This approach is more reliable for GitHub Actions than page scraping
+# Handles timezone logic (EST vs UTC) and downloads appropriate date CSV
 
 on:
   schedule:
@@ -41,13 +42,13 @@ jobs:
         echo "🔍 Collection Type Detection:"
         if [ "${{ github.event.schedule }}" = "20 21 * * *" ]; then
           echo "⏰ 4:20 PM EST collection detected"
-          echo "📊 Will run: node simple-net-sales.js"
+          echo "📊 Will run: node csv-based-net-sales.js"
         elif [ "${{ github.event.schedule }}" = "15 2 * * *" ]; then
           echo "⏰ 9:15 PM EST collection detected"
-          echo "📊 Will run: COLLECTION_TIME=final node simple-net-sales.js"
+          echo "📊 Will run: COLLECTION_TIME=final node csv-based-net-sales.js"
         elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           echo "🔄 Manual trigger detected"
-          echo "📊 Will run: node simple-net-sales.js (default MID-DAY mode)"
+          echo "📊 Will run: node csv-based-net-sales.js (default MID-DAY mode)"
         else
           echo "❓ Unknown trigger type: ${{ github.event_name }}"
         fi
@@ -56,19 +57,19 @@ jobs:
       if: github.event.schedule == '20 21 * * *'
       run: |
         echo "🚀 Starting 4:20 PM EST collection..."
-        node simple-net-sales.js
+        node csv-based-net-sales.js
       
     - name: Run sales data collection (9:15 PM)
       if: github.event.schedule == '15 2 * * *'
       run: |
         echo "🚀 Starting 9:15 PM EST collection..."
-        COLLECTION_TIME=final node simple-net-sales.js
+        COLLECTION_TIME=final node csv-based-net-sales.js
       
     - name: Run sales data collection (manual trigger)
       if: github.event_name == 'workflow_dispatch'
       run: |
         echo "🚀 Starting manual collection (MID-DAY mode)..."
-        node simple-net-sales.js
+        node csv-based-net-sales.js
       
     - name: Upload results
       if: always()
